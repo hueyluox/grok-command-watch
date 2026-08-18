@@ -100,23 +100,36 @@ _BUSY_UPDATES = frozenset({
 _SETTLE_UPDATES = frozenset({"turn_completed"})
 
 
-def last_session_update(session_id: str | None) -> tuple[str | None, str | None]:
-    """Latest busy/settle update kind and its prompt_id, if any."""
+def _event_ts(data: dict, upd: dict) -> float:
+    raw = data.get("timestamp") or upd.get("timestamp")
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    if raw:
+        try:
+            return datetime.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def last_session_update(session_id: str | None) -> tuple[str | None, str | None, float]:
+    """Latest busy/settle update: kind, prompt_id, timestamp."""
     root = session_dir(session_id)
     if root is None:
-        return None, None
+        return None, None, 0.0
     path = root / "updates.jsonl"
     if not path.exists():
-        return None, None
+        return None, None, 0.0
     try:
         size = path.stat().st_size
         with path.open("rb") as fh:
-            fh.seek(max(0, size - 65536))
+            fh.seek(max(0, size - 262144))
             chunk = fh.read().decode("utf-8", "replace")
     except OSError:
-        return None, None
+        return None, None, 0.0
     last_kind = None
     last_prompt = None
+    last_ts = 0.0
     for line in chunk.splitlines():
         try:
             data = json.loads(line)
@@ -137,12 +150,17 @@ def last_session_update(session_id: str | None) -> tuple[str | None, str | None]
         ):
             last_kind = kind
             last_prompt = upd.get("prompt_id") or last_prompt
-    return last_kind, last_prompt
+            last_ts = _event_ts(data, upd)
+    return last_kind, last_prompt, last_ts
 
 
-def session_in_flight(session_id: str | None, prompt_id: str | None = None) -> bool:
+def session_in_flight(
+    session_id: str | None,
+    prompt_id: str | None = None,
+    prompt_at: float = 0,
+) -> bool:
     """True while the TUI would show Waiting for response / streaming / tools."""
-    kind, done_prompt = last_session_update(session_id)
+    kind, done_prompt, done_at = last_session_update(session_id)
     if kind in _BUSY_UPDATES or kind in (
         "user_prompt_submit",
         "pre_tool_use",
@@ -150,7 +168,13 @@ def session_in_flight(session_id: str | None, prompt_id: str | None = None) -> b
     ):
         return True
     if kind in _SETTLE_UPDATES:
-        if prompt_id and done_prompt and str(prompt_id) != str(done_prompt):
+        # New prompt submitted after the last completed turn, still waiting.
+        if (
+            prompt_id
+            and done_prompt
+            and str(prompt_id) != str(done_prompt)
+            and float(prompt_at or 0) > done_at
+        ):
             return True
         return False
     return False
@@ -176,7 +200,7 @@ def refresh_workflows(roster: dict) -> None:
             if title:
                 slot["title"] = title
             continue
-        if session_in_flight(sid, slot.get("prompt_id")):
+        if session_in_flight(sid, slot.get("prompt_id"), slot.get("prompt_at") or 0):
             if slot.get("state") in ("empty", "idle", "complete"):
                 slot["state"] = "running"
             title = short_title(sid)
@@ -246,6 +270,7 @@ def empty_slot(name: str) -> dict:
         "state": "empty",
         "title": "",
         "prompt_id": None,
+        "prompt_at": 0,
         "complete_until": 0,
     }
 
@@ -436,6 +461,7 @@ def apply_event(event: dict) -> None:
     if name in ("user_prompt_submit", "UserPromptSubmit") and not sub:
         slot["state"] = "running"
         slot["prompt_id"] = prompt_id
+        slot["prompt_at"] = now
         slot["session_id"] = session_id or slot.get("session_id")
         slot["title"] = short_title(slot.get("session_id"))
     elif name in ("pre_tool_use", "PreToolUse"):
@@ -489,7 +515,9 @@ def apply_event(event: dict) -> None:
             slot["state"] = "needs_you"
         elif ntype in ("idle_prompt", "task_complete"):
             if workflow_label(slot.get("session_id")) or session_in_flight(
-                slot.get("session_id"), slot.get("prompt_id")
+                slot.get("session_id"),
+                slot.get("prompt_id"),
+                slot.get("prompt_at") or 0,
             ):
                 slot["state"] = "running"
             else:
