@@ -75,8 +75,9 @@ private final class UsbEvents {
         openedPath = ""
     }
 
-    func writeLine(_ line: String) {
-        guard fd >= 0 else { return }
+    @discardableResult
+    func writeLine(_ line: String) -> Bool {
+        guard fd >= 0 else { return false }
         var text = line
         if !text.hasSuffix("\n") { text.append("\n") }
         let bytes = Array(text.utf8)
@@ -86,7 +87,9 @@ private final class UsbEvents {
         if n < 0 {
             Companion.log("usb write fail errno=\(errno)")
             close()
+            return false
         }
+        return true
     }
 
     private static func portPath() -> String? {
@@ -504,6 +507,7 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
     private var lastBlePayload = Data()
     private var lastBleSnap: TimeInterval = 0
     private var lastUsbOpen = false
+    private var usbFailStreak = 0
     private var startedAt = Date().timeIntervalSince1970
     private var usbSeen = false
     private var selectedSlot = 0
@@ -898,7 +902,8 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
     private func firstNeedsYou() -> Int? {
         let roster = loadRoster()
         let binds = loadBinds()
-        for (index, name) in slotOrder.enumerated() {
+        let cells = watchCellNames(roster, binds)
+        for (index, name) in cells.enumerated() {
             if SlotState(name: slotStateName(roster, binds, name)) == .needsYou {
                 return index
             }
@@ -911,14 +916,17 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
         let usbOpen = usb.isOpen
         if usbOpen, force || payload != lastPayload {
             if let json = String(data: payload, encoding: .utf8) {
-                usb.writeLine("SNAP \(json)")
+                if usb.writeLine("SNAP \(json)") {
+                    usbFailStreak = 0
+                } else {
+                    usbFailStreak += 1
+                }
             }
         }
         lastPayload = payload
-        // Unplugging USB-JTAG reboots the S3. Last USB snap is not on the
-        // watch anymore — push BLE on undock, on reconnect, and every 4s.
         let now = Date().timeIntervalSince1970
-        let bleDue = !usbOpen && (force || payload != lastBlePayload || now - lastBleSnap >= 4)
+        let usbBroken = usbFailStreak >= 2
+        let bleDue = (!usbOpen || usbBroken) && (force || payload != lastBlePayload || now - lastBleSnap >= 4)
         guard bleDue, let peripheral, let snapshotChar else { return }
         peripheral.writeValue(payload, for: snapshotChar, type: .withoutResponse)
         lastBlePayload = payload
@@ -930,12 +938,11 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
         let binds = loadBinds()
         let cells = watchCellNames(roster, binds)
         let panes = Keys.loadPanesFile()
-        let n = min(cells.count, 10)
         var states: [Int] = []
         var titles: [String] = []
-        for index in 0..<n {
-            let name = cells[index]
+        for (index, name) in cells.prefix(10).enumerated() {
             let state = SlotState(name: slotStateName(roster, binds, name))
+            if state == .empty { continue }
             states.append(state.rawValue)
             var title = slotTitle(roster, name)
             if panes.total > 10 {
@@ -944,20 +951,29 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
             }
             titles.append(String(title.prefix(24)))
         }
-        if selectedSlot >= n { selectedSlot = max(0, n - 1) }
+        let n = states.count
+        if n == 0 {
+            selectedSlot = -1
+        } else if selectedSlot >= n {
+            selectedSlot = n - 1
+        }
         if states != lastSnapStates {
             lastSnapStates = states
             Self.log("snap \(cells) s=\(states) n=\(n) page=\(panes.page) total=\(panes.total)")
         }
-        let body: [String: Any] = [
+        let pages = max(1, (panes.total + 9) / 10)
+        let macFg = Self.loadMacFocus() ?? -1
+        var body: [String: Any] = [
             "v": 1,
             "sel": selectedSlot,
-            "fg": selectedSlot,
+            "fg": macFg,
             "link": 2,
             "n": n,
+            "pages": pages,
             "s": states,
             "t": titles,
         ]
+        if n == 0 { body["clr"] = 1 }
         return (try? JSONSerialization.data(withJSONObject: body)) ?? Data("{}".utf8)
     }
 

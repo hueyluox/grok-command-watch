@@ -34,8 +34,8 @@ struct State {
   bool charging = false;
   bool leftPressed = false;
   bool rightPressed = false;
-  bool showAnswers = false;
   bool recording = false;
+  int8_t pages = 1;
   int powerOverlay = 0;
   float powerHold = 0;
   uint32_t nowMs = 0;
@@ -95,7 +95,7 @@ inline uint16_t colorFor(SlotState s) {
   }
 }
 
-// Instagram logo gradient: purple → magenta → pink → orange → gold.
+// Quiet dusk loop: indigo → teal → ice → sand → indigo.
 inline uint16_t igColor(float t, float lift) {
   t = clampf(t, 0.0f, 1.0f);
   struct Stop {
@@ -166,33 +166,49 @@ inline SlotState commandState(const State& ui, int cmd) {
   return watchCell(ui, cmd);
 }
 
+inline int padOrbit() { return 168; }
+
+inline int padRadius(int n) {
+  if (n <= 1) return 38;
+  const float half = static_cast<float>(padOrbit()) * sinf(kPi / static_cast<float>(n));
+  const int r = static_cast<int>(half - 8.0f);
+  if (r < 22) return 22;
+  if (r > 38) return 38;
+  return r;
+}
+
+inline void padCenter(int index, int n, int& x, int& y) {
+  if (n <= 0) {
+    x = kCx;
+    y = kCy;
+    return;
+  }
+  const float deg = static_cast<float>(index) * 360.0f / static_cast<float>(n) - 90.0f;
+  const float a = deg * kPi / 180.0f;
+  x = kCx + static_cast<int>(padOrbit() * cosf(a) + 0.5f);
+  y = kCy + static_cast<int>(padOrbit() * sinf(a) + 0.5f);
+}
+
 inline int slotAtPoint(const State& ui, int x, int y) {
   const int n = liveCount(ui);
   if (n <= 0) return -1;
-  const int dx = x - kCx;
-  const int dy = y - kCy;
-  const int r2 = dx * dx + dy * dy;
-  if (r2 < kInnerR * kInnerR) return -1;
-  if (r2 > kOuterR * kOuterR) return -1;
-  float deg = atan2f(static_cast<float>(dy), static_cast<float>(dx)) * 180.0f / kPi;
-  float shifted = deg + 90.0f;
-  while (shifted < 0) shifted += 360.0f;
-  while (shifted >= 360.0f) shifted -= 360.0f;
-  const float step = 360.0f / static_cast<float>(n);
-  int idx = static_cast<int>(floorf((shifted + step * 0.5f) / step));
-  if (idx >= n) idx = 0;
-  if (idx < 0) idx = n - 1;
-  return idx;
-}
-
-inline int answerAtPoint(int x, int y) {
-  const int dx = x - kCx;
-  const int dy = y - kCy;
-  if (dx * dx + dy * dy > kInnerR * kInnerR) return 0;
-  if (dy < 0 && abs(dy) >= abs(dx)) return 1;
-  if (dx >= 0 && abs(dx) >= abs(dy)) return 2;
-  if (dy >= 0 && abs(dy) >= abs(dx)) return 3;
-  return 4;
+  const int hitR = padRadius(n) + 8;
+  const int hitR2 = hitR * hitR;
+  int best = -1;
+  int bestD = hitR2 + 1;
+  for (int i = 0; i < n; ++i) {
+    if (watchCell(ui, i) == SlotState::Empty) continue;
+    int lx, ly;
+    padCenter(i, n, lx, ly);
+    const int dx = x - lx;
+    const int dy = y - ly;
+    const int d2 = dx * dx + dy * dy;
+    if (d2 <= hitR2 && d2 < bestD) {
+      bestD = d2;
+      best = i;
+    }
+  }
+  return best;
 }
 
 inline bool centerAtPoint(int x, int y) {
@@ -234,7 +250,7 @@ inline void drawBatteryRing(M5Canvas& c, const State& ui) {
     if (i < lit) {
       ringSeg(c, kR0, kR1, d0, d1, igColor((i + 0.5f) / static_cast<float>(kSeg), 0.2f));
     } else {
-      ringSeg(c, kR0, kR1, d0, d1, rgb(58, 58, 62));
+      ringSeg(c, kR0, kR1, d0, d1, rgb(96, 96, 102));
     }
   }
   if (lit > 0) {
@@ -261,7 +277,7 @@ inline uint16_t padFill(SlotState st, float breath, float blink) {
     case SlotState::Complete:
       return rgb(36, 196, 88);
     case SlotState::Loop:
-      return mix(rgb(70, 30, 110), rgb(180, 90, 255), 0.40f + 0.50f * breath);
+      return rgb(96, 52, 148);
     case SlotState::Idle:
       return rgb(52, 52, 56);
     default:
@@ -273,7 +289,9 @@ inline void render(M5Canvas& c, const State& ui) {
   c.fillScreen(0x0000);
   const int n = liveCount(ui);
   int selectedCmd = ui.selected;
-  if (selectedCmd < 0 || selectedCmd >= n || watchCell(ui, selectedCmd) == SlotState::Empty) {
+  if (n <= 0) {
+    selectedCmd = -1;
+  } else if (selectedCmd < 0 || selectedCmd >= n || watchCell(ui, selectedCmd) == SlotState::Empty) {
     selectedCmd = 0;
     for (int i = 0; i < n; ++i) {
       if (watchCell(ui, i) != SlotState::Empty) {
@@ -287,31 +305,31 @@ inline void render(M5Canvas& c, const State& ui) {
   const float blink = hardBlink(now, 700);
   const float say = std::max(ui.leftPressed ? 1.0f : 0.0f, decay(now, ui.leftAtMs, 380));
   const float send = std::max(ui.rightPressed ? 1.0f : 0.0f, decay(now, ui.rightAtMs, 260));
-  const float pop = decay(now, ui.selectAtMs, 320);
   const SlotState faceState = n > 0 ? watchCell(ui, selectedCmd) : SlotState::Empty;
 
   drawBatteryRing(c, ui);
 
-  const int padR = n >= 9 ? 32 : 38;
-  constexpr int kPadOrbit = 168;
-  const float step = n > 0 ? 360.0f / static_cast<float>(n) : 90.0f;
+  const int padR = padRadius(n);
   for (int cmd = 0; cmd < n; ++cmd) {
     const SlotState st = watchCell(ui, cmd);
     if (st == SlotState::Empty) continue;
     const bool on = cmd == selectedCmd;
-    const float mid = static_cast<float>(cmd) * step - 90.0f;
-    const float rad = mid * kPi / 180.0f;
-    const int lx = kCx + static_cast<int>(kPadOrbit * cosf(rad));
-    const int ly = kCy + static_cast<int>(kPadOrbit * sinf(rad));
+    int lx, ly;
+    padCenter(cmd, n, lx, ly);
 
     c.fillCircle(lx, ly, padR, padFill(st, breath, blink));
+    if (st == SlotState::Loop) {
+      const float sweep = (now % 4000) / 4000.0f * 360.0f - 90.0f;
+      int ax, ay;
+      const float ar = sweep * kPi / 180.0f;
+      const int rr = padR - 6;
+      ax = lx + static_cast<int>(rr * cosf(ar));
+      ay = ly + static_cast<int>(rr * sinf(ar));
+      c.fillCircle(ax, ay, 3, rgb(220, 190, 255));
+    }
     if (on) {
-      c.drawCircle(lx, ly, padR + 3, rgb(255, 255, 255));
-      c.drawCircle(lx, ly, padR + 4, rgb(255, 255, 255));
-      if (pop > 0) {
-        c.drawCircle(lx, ly, padR + 6 + static_cast<int>(14 * (1.0f - pop)),
-                     mix(0x0000, rgb(255, 255, 255), pop));
-      }
+      const int inner = padR > 6 ? padR - 5 : padR / 2;
+      c.drawCircle(lx, ly, inner, rgb(255, 255, 255));
     } else {
       c.drawCircle(lx, ly, padR, rgb(20, 20, 22));
     }
@@ -350,22 +368,16 @@ inline void render(M5Canvas& c, const State& ui) {
     c.drawString("·", kCx, kCy - 10);
   }
 
-  const char* title = ui.titles[selectedCmd];
-  if (title && title[0] && faceState != SlotState::Empty) {
-    char line[16];
-    strncpy(line, title, 15);
-    line[15] = 0;
-    c.setFont(&fonts::Font0);
-    c.setTextColor(rgb(152, 152, 157));
-    c.drawString(line, kCx, kCy + 18);
-  }
-
-  if (ui.battery >= 0) {
-    c.setFont(&fonts::Font0);
-    c.setTextColor(ui.charging ? rgb(48, 209, 88) : rgb(99, 99, 102));
-    char bat[8];
-    snprintf(bat, sizeof(bat), "%d%%", ui.battery);
-    c.drawString(bat, kCx, kCy + 38);
+  if (selectedCmd >= 0 && selectedCmd < kMaxPads) {
+    const char* title = ui.titles[selectedCmd];
+    if (title && title[0] && faceState != SlotState::Empty) {
+      char line[16];
+      strncpy(line, title, 15);
+      line[15] = 0;
+      c.setFont(&fonts::Font0);
+      c.setTextColor(rgb(152, 152, 157));
+      c.drawString(line, kCx, kCy + 18);
+    }
   }
 
   if (ui.powerOverlay) {

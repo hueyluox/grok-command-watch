@@ -406,7 +406,6 @@ watch_ui::State currentUi() {
   const watch_ui::SlotState st =
       selectedSlot >= 0 ? ui.slots[static_cast<size_t>(selectedSlot)]
                         : watch_ui::SlotState::Empty;
-  ui.showAnswers = st == watch_ui::SlotState::NeedsYou;
   ui.recording = watchRecording;
   ui.powerOverlay = powerOverlay;
   ui.nowMs = millis();
@@ -449,6 +448,7 @@ void selectSlot(int8_t slot, bool focusMac) {
 void applyHostSnapshot() {
   const auto latest = ble.snapshot();
   if (!latest.available) return;
+  bool chimed = false;
   for (int i = 0; i < watch_ui::kMaxPads; ++i) {
     const auto next = latest.ui.slots[static_cast<size_t>(i)];
     if (sawState[static_cast<size_t>(i)] && lastStates[static_cast<size_t>(i)] != next) {
@@ -457,8 +457,11 @@ void applyHostSnapshot() {
         startHaptic(kButtonHapticIntensity, kNeedHapticDurationMs);
       } else if (next == watch_ui::SlotState::Complete) {
         noteActivity();
-        startHaptic(kButtonHapticIntensity, kDoneHapticDurationMs);
-        playDoneChime();
+        if (!chimed) {
+          startHaptic(kButtonHapticIntensity, kDoneHapticDurationMs);
+          playDoneChime();
+          chimed = true;
+        }
       } else if (next == watch_ui::SlotState::Error) {
         noteActivity();
         startHaptic(kButtonHapticIntensity, kErrorHapticDurationMs);
@@ -468,9 +471,13 @@ void applyHostSnapshot() {
     sawState[static_cast<size_t>(i)] = true;
   }
   host = latest;
-  if (host.ui.selected >= 0 && host.ui.selected < watch_ui::kMaxPads) {
-    selectedSlot = host.ui.selected;
+  static int8_t lastHostFg = -2;
+  if (host.ui.focused != lastHostFg && host.ui.focused >= 0 &&
+      host.ui.focused < watch_ui::kMaxPads) {
+    selectedSlot = host.ui.focused;
+    lastHostFg = host.ui.focused;
   }
+  if (host.ui.count == 0) selectedSlot = -1;
   drawScreen();
 }
 
@@ -489,6 +496,9 @@ void updateTouchGesture(int x, int y) {
       touch_gesture::classifySwipe(x - touchStartX, y - touchStartY, kSwipeThresholdPx);
   if (direction == touch_gesture::Direction::None) return;
   activeSwipe = direction;
+  const auto live = currentUi();
+  const int pages = live.pages > 0 ? live.pages : 1;
+  if (pages <= 1 && watch_ui::liveCount(live) <= 10) return;
   if (direction == touch_gesture::Direction::Left) {
     emit("page", selectedSlot, -1);
   } else if (direction == touch_gesture::Direction::Right) {

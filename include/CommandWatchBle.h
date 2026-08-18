@@ -145,17 +145,20 @@ class Server : public BLEServerCallbacks, public BLECharacteristicCallbacks {
       return;
     }
     JsonArray states = doc["s"].as<JsonArray>();
-    int incoming = doc["n"] | (states.isNull() ? 0 : static_cast<int>(states.size()));
-    if (incoming <= 0 && snapshotState_.available && snapshotState_.ui.count > 0) {
+    const int incoming = doc["n"] | (states.isNull() ? 0 : static_cast<int>(states.size()));
+    const bool clear = (doc["clr"] | 0) == 1;
+    if (incoming <= 0 && !clear && snapshotState_.available && snapshotState_.ui.count > 0) {
       Serial.println("snapshot ignore empty");
       return;
     }
     Snapshot next;
     next.available = true;
     next.receivedAtMs = millis();
-    next.ui.selected = doc["sel"] | 0;
+    next.ui.selected = doc["sel"] | -1;
     next.ui.focused = doc["fg"] | -1;
     next.ui.link = doc["link"] | 2;
+    next.ui.pages = static_cast<int8_t>(doc["pages"] | 1);
+    if (next.ui.pages < 1) next.ui.pages = 1;
     int parsed = 0;
     for (int i = 0; i < watch_ui::kMaxPads; ++i) {
       const int raw = states.isNull() ? 0 : states[i] | 0;

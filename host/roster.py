@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -35,11 +34,18 @@ def save_json(path: Path, data) -> None:
     tmp.replace(path)
 
 
+_DIR_CACHE: dict[str, Path] = {}
+
+
 def session_dir(session_id: str | None) -> Path | None:
     if not session_id:
         return None
+    cached = _DIR_CACHE.get(session_id)
+    if cached is not None and cached.is_dir():
+        return cached
     for path in SESSION_DIR.rglob(session_id):
         if path.is_dir() and path.name == session_id:
+            _DIR_CACHE[session_id] = path
             return path
     return None
 
@@ -98,12 +104,16 @@ _BUSY_UPDATES = frozenset({
     "user_message",
 })
 _SETTLE_UPDATES = frozenset({"turn_completed"})
+_UPD_CACHE: dict[str, tuple] = {}
 
 
 def _event_ts(data: dict, upd: dict) -> float:
     raw = data.get("timestamp") or upd.get("timestamp")
     if isinstance(raw, (int, float)):
-        return float(raw)
+        ts = float(raw)
+        if ts > 1e12:
+            ts /= 1000.0
+        return ts
     if raw:
         try:
             return datetime.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()
@@ -121,16 +131,23 @@ def last_session_update(session_id: str | None) -> tuple[str | None, str | None,
     if not path.exists():
         return None, None, 0.0
     try:
-        size = path.stat().st_size
+        st = path.stat()
+    except OSError:
+        return None, None, 0.0
+    cache_key = (str(path), st.st_mtime, st.st_size)
+    cached = _UPD_CACHE.get(session_id)
+    if cached and cached[0] == cache_key:
+        return cached[1], cached[2], cached[3]
+    try:
         with path.open("rb") as fh:
-            fh.seek(max(0, size - 262144))
+            fh.seek(max(0, st.st_size - 262144))
             chunk = fh.read().decode("utf-8", "replace")
     except OSError:
         return None, None, 0.0
     last_kind = None
     last_prompt = None
     last_ts = 0.0
-    for line in chunk.splitlines():
+    for line in reversed(chunk.splitlines()):
         try:
             data = json.loads(line)
         except json.JSONDecodeError:
@@ -149,8 +166,10 @@ def last_session_update(session_id: str | None) -> tuple[str | None, str | None,
             "post_tool_use",
         ):
             last_kind = kind
-            last_prompt = upd.get("prompt_id") or last_prompt
+            last_prompt = upd.get("prompt_id")
             last_ts = _event_ts(data, upd)
+            break
+    _UPD_CACHE[session_id] = (cache_key, last_kind, last_prompt, last_ts)
     return last_kind, last_prompt, last_ts
 
 
@@ -184,6 +203,21 @@ def refresh_workflows(roster: dict) -> None:
     sync_from_panes(roster)
     for slot in roster["slots"].values():
         sid = slot.get("session_id")
+        looping = session_has_loop(sid)
+        if slot.get("state") == "needs_you":
+            kind, _, _ = last_session_update(sid)
+            if kind == "post_tool_use":
+                slot["state"] = "loop" if looping else "running"
+            else:
+                continue
+        if slot.get("state") == "error":
+            continue
+        if looping:
+            slot["state"] = "loop"
+            title = short_title(sid)
+            if title:
+                slot["title"] = title
+            continue
         label = workflow_label(sid)
         if label:
             slot["state"] = "running"
@@ -191,15 +225,6 @@ def refresh_workflows(roster: dict) -> None:
             slot["bg"] = True
             continue
         slot["bg"] = False
-        # Permission / error stay until the next prompt or an explicit hook.
-        if slot.get("state") in ("needs_you", "error"):
-            continue
-        if session_has_loop(sid):
-            slot["state"] = "loop"
-            title = short_title(sid)
-            if title:
-                slot["title"] = title
-            continue
         if session_in_flight(sid, slot.get("prompt_id"), slot.get("prompt_at") or 0):
             if slot.get("state") in ("empty", "idle", "complete"):
                 slot["state"] = "running"
@@ -220,18 +245,6 @@ def session_has_loop(session_id: str | None) -> bool:
     root = session_dir(session_id)
     if root is None:
         return False
-    summary = root / "summary.json"
-    if summary.exists():
-        try:
-            data = json.loads(summary.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            data = {}
-        blob = " ".join(
-            str(data.get(key) or "")
-            for key in ("last_turn_summary", "generated_title")
-        )
-        if re.search(r"(?i)(\bloop\b|/loop|loop tick)", blob):
-            return True
     sub_root = root / "subagents"
     if sub_root.is_dir():
         for meta in sub_root.glob("*/meta.json"):
@@ -247,19 +260,18 @@ def session_has_loop(session_id: str | None) -> bool:
 
 
 def short_title(session_id: str | None) -> str:
-    if not session_id:
+    root = session_dir(session_id)
+    if root is None:
         return ""
-    for summary in SESSION_DIR.rglob("summary.json"):
-        if summary.parent.name != session_id:
-            continue
-        try:
-            data = json.loads(summary.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return ""
-        text = data.get("last_turn_summary") or data.get("generated_title") or ""
-        text = " ".join(str(text).split())
-        return text[:24]
-    return ""
+    summary = root / "summary.json"
+    if not summary.exists():
+        return ""
+    try:
+        data = json.loads(summary.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    text = data.get("last_turn_summary") or data.get("generated_title") or ""
+    return " ".join(str(text).split())[:24]
 
 
 def empty_slot(name: str) -> dict:
@@ -342,14 +354,25 @@ def sync_from_panes(roster: dict) -> None:
         slot = ensure_pid_slot(roster, pid)
         if slot and slot.get("state") == "empty":
             slot["state"] = "idle"
+        if slot:
+            slot.pop("gone_at", None)
+    now = time.time()
     for name in list(roster["slots"]):
         if not str(name).startswith("p"):
             continue
         slot = roster["slots"][name]
         pid = slot.get("pid")
         if pid and int(pid) in live:
+            slot.pop("gone_at", None)
             continue
         if pid_alive(pid):
+            slot.pop("gone_at", None)
+            continue
+        gone = float(slot.get("gone_at") or 0)
+        if gone <= 0:
+            slot["gone_at"] = now
+            continue
+        if now - gone < 8:
             continue
         del roster["slots"][name]
 

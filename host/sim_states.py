@@ -482,16 +482,40 @@ def run() -> int:
     refresh(mod, r)
     s.check("五扇都建了", all(f"p{p}" in r["slots"] or any(x.get("pid")==p for x in r["slots"].values()) for p in (11, 22, 33, 44, 55)), True)
     write_json(mod.PANES_PATH, {"page": 0, "panes": []})
-    # 4242 不在 panes 且进程不存在 → 清掉
+    refresh(mod, r)
+    s.check("刚死的pid先留着", "p4242" in r["slots"], True)
+    if "p4242" in r["slots"]:
+        r["slots"]["p4242"]["gone_at"] = 1
     refresh(mod, r)
     s.check("关掉的pid清掉", "p4242" in r["slots"], False)
 
     r = empty_roster(mod)
-    seed_session(mod, "s-loop", title="Loop tick OK: skipped (outside window)")
+    seed_session(mod, "s-loop", title="hold upgrade batch")
+    write_json(
+        session_root(mod, "s-loop") / "subagents" / "x" / "meta.json",
+        {"description": "loop: hold upgrade (every 1 hour)"},
+    )
     bind(mod, r, "2L", "s-loop", 22)
     r["slots"]["2L"].update(state="complete", prompt_id="px")
     refresh(mod, r)
     s.check("loop单独成色", r["slots"]["2L"]["state"], "loop")
+
+    r = empty_roster(mod)
+    seed_session(mod, "s-mention", title="talk about loop in the copy")
+    bind(mod, r, "1L", "s-mention", 11)
+    r["slots"]["1L"].update(state="complete", prompt_id="p1")
+    refresh(mod, r)
+    s.check("标题带loop不算", r["slots"]["1L"]["state"], "complete")
+
+    def pad_radius(n):
+        if n <= 1:
+            return 38
+        import math
+        r = int(168 * math.sin(math.pi / n) - 8)
+        return max(22, min(38, r))
+
+    s.check("4球半径仍38", pad_radius(4), 38)
+    s.check("半径随n单调不增", pad_radius(10) <= pad_radius(4), True)
 
     print(f"tmp={tmp}")
     for row in s.rows:

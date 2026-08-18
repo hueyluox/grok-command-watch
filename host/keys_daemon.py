@@ -175,24 +175,46 @@ def is_grok_command(command: str) -> bool:
     return os.path.basename(first) == "grok"
 
 
+def etime_seconds(text: str) -> int:
+    # [[dd-]hh:]mm:ss
+    raw = (text or "").strip()
+    days = 0
+    if "-" in raw:
+        day_s, raw = raw.split("-", 1)
+        try:
+            days = int(day_s)
+        except ValueError:
+            days = 0
+    parts = raw.split(":")
+    try:
+        nums = [int(p) for p in parts]
+    except ValueError:
+        return 0
+    while len(nums) < 3:
+        nums.insert(0, 0)
+    return days * 86400 + nums[0] * 3600 + nums[1] * 60 + nums[2]
+
+
 def list_grok_procs() -> list[dict]:
     import subprocess
     try:
-        out = subprocess.check_output(["ps", "-ax", "-o", "pid=,tty=,command="], text=True)
+        out = subprocess.check_output(["ps", "-ax", "-o", "pid=,etime=,tty=,command="], text=True)
     except OSError:
         return []
     found = []
     for line in out.splitlines():
-        parts = line.split(None, 2)
-        if len(parts) < 3:
+        parts = line.split(None, 3)
+        if len(parts) < 4:
             continue
         try:
             pid = int(parts[0])
         except ValueError:
             continue
-        if not is_grok_command(parts[2]):
+        if etime_seconds(parts[1]) < 2:
             continue
-        found.append({"pid": pid, "tty": parts[1].replace("/dev/", "")})
+        if not is_grok_command(parts[3]):
+            continue
+        found.append({"pid": pid, "tty": parts[2].replace("/dev/", "")})
     found.sort(key=lambda item: (tty_sort_key(item["tty"]), item["pid"]))
     return found
 
@@ -218,9 +240,10 @@ def write_panes(page: int | None = None) -> dict:
         elif n_tabs and n == 2 * n_tabs:
             tab = index // 2 + 1
             pane = "up" if index % 2 == 0 else "down"
+        elif n_tabs:
+            tab = min(index + 1, n_tabs)
         else:
-            tab = index // 2 + 1
-            pane = "up" if index % 2 == 0 else "down"
+            tab = index + 1
         panes.append({
             "index": index,
             "pid": grok["pid"],
@@ -246,19 +269,6 @@ def write_panes(page: int | None = None) -> dict:
         except OSError as exc:
             log(f"panes write {exc}")
     return data
-
-
-def stamp_title(name: str, tty: str | None) -> None:
-    if not tty:
-        return
-    path = tty if tty.startswith("/") else f"/dev/{tty}"
-    if not os.path.exists(path):
-        return
-    try:
-        with open(path, "w") as fh:
-            fh.write(f"\033]0;Grok-{name}\007")
-    except OSError:
-        pass
 
 
 def focus_input(window, pane: str = "down") -> None:
@@ -288,10 +298,7 @@ def focus_pane(index: int) -> bool:
     app, surfaces = all_surfaces()
     if app is None:
         return False
-    if pane.get("tty"):
-        stamp_title(str(index + 1), pane.get("tty"))
     app.activateWithOptions_(1 << 1)
-    time.sleep(0.06)
     release_mods()
     tab_i = int(pane.get("tab") or 1) - 1
     if 0 <= tab_i < len(surfaces):
@@ -299,15 +306,12 @@ def focus_pane(index: int) -> bool:
         AXUIElementPerformAction(window, "AXRaise")
         if tab is not None:
             AXUIElementPerformAction(tab, "AXPress")
-            time.sleep(0.12)
     elif pane.get("tab") in TAB_KEYS:
         tap(TAB_KEYS[int(pane["tab"])], kCGEventFlagMaskCommand)
-        time.sleep(0.15)
     side = pane.get("pane")
     if side in ("up", "down"):
         release_mods()
         tap(126 if side == "up" else 125, kCGEventFlagMaskCommand | kCGEventFlagMaskAlternate)
-        time.sleep(0.08)
     release_mods()
     focus_input(front_window(), side or "up")
     log(f"focus pane={index} pid={pane.get('pid')} tab={pane.get('tab')} {side}")
