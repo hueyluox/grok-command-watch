@@ -190,10 +190,10 @@ private enum Keys {
     }
 
     static func tab(_ slot: Int) {
-        let page = loadPanesFile().page
-        let index = page * 4 + slot / 2
+        let file = loadPanesFile()
+        let index = file.page * 10 + slot
         _ = send("focus \(index)")
-        Companion.log("focus pane=\(index) page=\(page)")
+        Companion.log("focus pane=\(index) page=\(file.page)")
     }
 
     static func page(_ delta: Int) {
@@ -888,32 +888,31 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
         let binds = loadBinds()
         let cells = watchCellNames(roster, binds)
         let panes = Keys.loadPanesFile()
+        let n = min(cells.count, 10)
         var states: [Int] = []
         var titles: [String] = []
-        for index in 0..<8 {
-            if index < 4 {
-                let name = cells[index]
-                let state = SlotState(name: slotStateName(roster, binds, name))
-                states.append(state.rawValue)
-                var title = slotTitle(roster, name)
-                if panes.total > 4, name != "_" {
-                    let shown = panes.page * 4 + index + 1
-                    title = "\(shown)/\(panes.total) \(title)"
-                }
-                titles.append(String(title.prefix(24)))
-            } else {
-                states.append(SlotState.empty.rawValue)
+        for index in 0..<n {
+            let name = cells[index]
+            let state = SlotState(name: slotStateName(roster, binds, name))
+            states.append(state.rawValue)
+            var title = slotTitle(roster, name)
+            if panes.total > 10 {
+                let shown = panes.page * 10 + index + 1
+                title = "\(shown)/\(panes.total) \(title)"
             }
+            titles.append(String(title.prefix(24)))
         }
+        if selectedSlot >= n { selectedSlot = max(0, n - 1) }
         if states != lastSnapStates {
             lastSnapStates = states
-            Self.log("snap \(cells) s=\(states.prefix(4)) page=\(panes.page) n=\(panes.total)")
+            Self.log("snap \(cells) s=\(states) n=\(n) page=\(panes.page) total=\(panes.total)")
         }
         let body: [String: Any] = [
             "v": 1,
             "sel": selectedSlot,
             "fg": selectedSlot,
             "link": 2,
+            "n": n,
             "s": states,
             "t": titles,
         ]
@@ -947,7 +946,7 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
         } else {
             return nil
         }
-        guard [0, 2, 4, 6].contains(slot) else { return nil }
+        guard (0..<10).contains(slot) else { return nil }
         return slot
     }
 
@@ -967,13 +966,8 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
     /// Pad 1–4 = current page of auto-detected grok processes.
     private func watchCellNames(_ roster: [String: Any], _ binds: [String: Any]) -> [String] {
         let file = Keys.loadPanesFile()
-        let slice = Array(file.pids.dropFirst(file.page * 4).prefix(4))
-        var cells: [String] = []
-        for pid in slice {
-            cells.append(slotName(forPid: pid, roster: roster, binds: binds))
-        }
-        while cells.count < 4 { cells.append("_") }
-        return cells
+        let slice = Array(file.pids.dropFirst(file.page * 10).prefix(10))
+        return slice.map { slotName(forPid: $0, roster: roster, binds: binds) }
     }
 
     private func slotName(forPid pid: Int, roster: [String: Any], binds: [String: Any]) -> String {

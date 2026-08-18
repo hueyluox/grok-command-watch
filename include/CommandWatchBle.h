@@ -138,8 +138,8 @@ class Server : public BLEServerCallbacks, public BLECharacteristicCallbacks {
   }
 
   void applyHostJson(const std::string& value) {
-    if (value.empty() || value.size() > 512) return;
-    StaticJsonDocument<768> doc;
+    if (value.empty() || value.size() > 640) return;
+    StaticJsonDocument<1536> doc;
     if (deserializeJson(doc, value.c_str(), value.size())) {
       Serial.println("snapshot parse fail");
       return;
@@ -151,13 +151,18 @@ class Server : public BLEServerCallbacks, public BLECharacteristicCallbacks {
     next.ui.focused = doc["fg"] | -1;
     next.ui.link = doc["link"] | 2;
     JsonArray states = doc["s"].as<JsonArray>();
-    for (int i = 0; i < 8; ++i) {
+    int parsed = 0;
+    for (int i = 0; i < watch_ui::kMaxPads; ++i) {
       const int raw = states.isNull() ? 0 : states[i] | 0;
       next.ui.slots[static_cast<size_t>(i)] =
           static_cast<watch_ui::SlotState>(constrain(raw, 0, 5));
+      if (!states.isNull() && i < static_cast<int>(states.size())) parsed = i + 1;
     }
+    next.ui.count = static_cast<int8_t>(doc["n"] | parsed);
+    if (next.ui.count < 0) next.ui.count = 0;
+    if (next.ui.count > watch_ui::kMaxPads) next.ui.count = watch_ui::kMaxPads;
     JsonArray titles = doc["t"].as<JsonArray>();
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < watch_ui::kMaxPads; ++i) {
       const char* text = titles.isNull() ? "" : titles[i] | "";
       strncpy(next.ui.titles[i], text, 24);
       next.ui.titles[i][24] = 0;
@@ -206,7 +211,7 @@ class Server : public BLEServerCallbacks, public BLECharacteristicCallbacks {
     StaticJsonDocument<128> doc;
     doc["op"] = event.op;
     if (event.slot >= 0) doc["slot"] = event.slot;
-    if (event.n > 0) doc["n"] = event.n;
+    if (strcmp(event.op, "page") == 0 || event.n != 0) doc["n"] = event.n;
     if (strcmp(event.op, "ptt") == 0) doc["on"] = event.pttOn;
     char buf[128];
     const size_t n = serializeJson(doc, buf, sizeof(buf));
@@ -254,7 +259,7 @@ class Server : public BLEServerCallbacks, public BLECharacteristicCallbacks {
   bool connected_ = false;
   bool dirty_ = false;
   bool eventReady_ = false;
-  char hostLine_[520]{};
+  char hostLine_[768]{};
   size_t hostLineLen_ = 0;
 };
 

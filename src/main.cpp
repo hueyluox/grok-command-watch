@@ -93,8 +93,8 @@ uint32_t lastPowerTelemetryMs = 0;
 uint32_t touchStartedAtMs = 0;
 uint32_t lastPowerOverlayDrawMs = 0;
 std::array<int16_t, kCompletionChimeSamples> completionChimePcm = {};
-std::array<watch_ui::SlotState, 8> lastStates{};
-std::array<bool, 8> sawState{};
+std::array<watch_ui::SlotState, watch_ui::kMaxPads> lastStates{};
+std::array<bool, watch_ui::kMaxPads> sawState{};
 power_button_gesture::Detector powerButtonGesture(kPowerButtonDoubleClickMs);
 
 void drawScreen();
@@ -436,7 +436,7 @@ void emit(const char* op, int8_t slot, int8_t n, bool pttOn) {
 }
 
 void setSlot(int8_t slot, bool focusMac) {
-  if (slot < 0 || slot > 7) return;
+  if (slot < 0 || slot >= watch_ui::kMaxPads) return;
   selectedSlot = slot;
   selectAtMs = millis();
   startHaptic(kTouchHapticIntensity, kTouchHapticDurationMs);
@@ -445,14 +445,14 @@ void setSlot(int8_t slot, bool focusMac) {
 }
 
 void selectSlot(int8_t slot, bool focusMac) {
-  if (slot < 0 || slot > 7) return;
-  setSlot(static_cast<int8_t>((slot / 2) * 2), focusMac);
+  if (slot < 0 || slot >= watch_ui::kMaxPads) return;
+  setSlot(slot, focusMac);
 }
 
 void applyHostSnapshot() {
   const auto latest = ble.snapshot();
   if (!latest.available) return;
-  for (int i = 0; i < 8; ++i) {
+  for (int i = 0; i < watch_ui::kMaxPads; ++i) {
     const auto next = latest.ui.slots[static_cast<size_t>(i)];
     if (sawState[static_cast<size_t>(i)] && lastStates[static_cast<size_t>(i)] != next) {
       if (next == watch_ui::SlotState::NeedsYou) {
@@ -471,7 +471,7 @@ void applyHostSnapshot() {
     sawState[static_cast<size_t>(i)] = true;
   }
   host = latest;
-  if (host.ui.selected >= 0 && host.ui.selected < 8) {
+  if (host.ui.selected >= 0 && host.ui.selected < watch_ui::kMaxPads) {
     selectedSlot = host.ui.selected;
   }
   drawScreen();
@@ -515,10 +515,10 @@ void finishTouchGesture(int x, int y) {
   if (watch_ui::centerAtPoint(x, y)) {
     return;
   }
-  const int slot = watch_ui::slotAtPoint(x, y);
-  if (slot < 0) return;
   const auto live = currentUi();
-  if (watch_ui::watchCell(live, slot / 2) == watch_ui::SlotState::Empty) return;
+  const int slot = watch_ui::slotAtPoint(live, x, y);
+  if (slot < 0) return;
+  if (watch_ui::watchCell(live, slot) == watch_ui::SlotState::Empty) return;
   selectSlot(static_cast<int8_t>(slot), true);
 }
 

@@ -231,7 +231,7 @@ def write_panes(page: int | None = None) -> dict:
     old = load_panes()
     if page is None:
         page = int(old.get("page") or 0)
-    max_page = max(0, (len(panes) - 1) // 4)
+    max_page = max(0, (len(panes) - 1) // 10)
     page = max(0, min(int(page), max_page))
     data = {"updated_at": time.time(), "page": page, "panes": panes}
     prev = {"page": old.get("page"), "panes": old.get("panes")}
@@ -315,7 +315,7 @@ def focus_pane(index: int) -> bool:
 def bump_page(delta: int) -> None:
     data = write_panes()
     n = len(data.get("panes") or [])
-    max_page = max(0, (n - 1) // 4)
+    max_page = max(0, (n - 1) // 10)
     page = max(0, min(int(data.get("page") or 0) + int(delta), max_page))
     write_panes(page=page)
     log(f"page -> {page} / {max_page} n={n}")
@@ -442,11 +442,10 @@ def infer_watch_slot() -> int | None:
     if hit is None:
         return None
     idx = int(hit["index"])
-    page = idx // 4
+    page = idx // 10
     if page != int(data.get("page") or 0):
         write_panes(page=page)
-    local = idx - page * 4
-    return local * 2
+    return idx - page * 10
 
 
 def poll_mac_focus() -> None:

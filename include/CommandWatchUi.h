@@ -18,13 +18,15 @@ constexpr int kCx = 233;
 constexpr int kCy = 233;
 constexpr int kOuterR = 228;
 constexpr int kInnerR = 108;
+constexpr int kMaxPads = 10;
 constexpr float kPi = 3.14159265f;
 
 enum class SlotState : uint8_t { Empty, Idle, Running, NeedsYou, Complete, Error };
 
 struct State {
-  std::array<SlotState, 8> slots{};
-  char titles[4][25]{};
+  std::array<SlotState, kMaxPads> slots{};
+  char titles[kMaxPads][25]{};
+  int8_t count = 0;
   int8_t selected = 0;
   int8_t focused = -1;
   uint8_t link = 0;
@@ -139,9 +141,20 @@ inline const char* stateWord(SlotState s) {
   }
 }
 
-// Watch 1..4 = Ghostty ⌘1上, ⌘1下, ⌘2上, ⌘2下 = slots 1L,1R,2L,2R.
+inline int liveCount(const State& ui) {
+  if (ui.count > 0) {
+    return ui.count > kMaxPads ? kMaxPads : static_cast<int>(ui.count);
+  }
+  int n = 0;
+  for (int i = 0; i < kMaxPads; ++i) {
+    if (ui.slots[static_cast<size_t>(i)] != SlotState::Empty) n = i + 1;
+  }
+  return n;
+}
+
 inline SlotState watchCell(const State& ui, int cell) {
-  if (cell < 0 || cell > 3) return SlotState::Empty;
+  const int n = liveCount(ui);
+  if (cell < 0 || cell >= n) return SlotState::Empty;
   return ui.slots[static_cast<size_t>(cell)];
 }
 
@@ -149,17 +162,23 @@ inline SlotState commandState(const State& ui, int cmd) {
   return watchCell(ui, cmd);
 }
 
-inline int slotAtPoint(int x, int y) {
+inline int slotAtPoint(const State& ui, int x, int y) {
+  const int n = liveCount(ui);
+  if (n <= 0) return -1;
   const int dx = x - kCx;
   const int dy = y - kCy;
   const int r2 = dx * dx + dy * dy;
   if (r2 < kInnerR * kInnerR) return -1;
   if (r2 > kOuterR * kOuterR) return -1;
   float deg = atan2f(static_cast<float>(dy), static_cast<float>(dx)) * 180.0f / kPi;
-  float shifted = deg + 135.0f;
-  while (shifted < 0) shifted += 360;
-  while (shifted >= 360) shifted -= 360;
-  return (static_cast<int>(shifted / 90.0f) % 4) * 2;
+  float shifted = deg + 90.0f;
+  while (shifted < 0) shifted += 360.0f;
+  while (shifted >= 360.0f) shifted -= 360.0f;
+  const float step = 360.0f / static_cast<float>(n);
+  int idx = static_cast<int>(floorf((shifted + step * 0.5f) / step));
+  if (idx >= n) idx = 0;
+  if (idx < 0) idx = n - 1;
+  return idx;
 }
 
 inline int answerAtPoint(int x, int y) {
@@ -246,9 +265,11 @@ inline uint16_t padFill(SlotState st, float breath, float blink) {
 
 inline void render(M5Canvas& c, const State& ui) {
   c.fillScreen(0x0000);
-  int selectedCmd = ui.selected >= 0 ? ui.selected / 2 : 0;
-  if (watchCell(ui, selectedCmd) == SlotState::Empty) {
-    for (int i = 0; i < 4; ++i) {
+  const int n = liveCount(ui);
+  int selectedCmd = ui.selected;
+  if (selectedCmd < 0 || selectedCmd >= n || watchCell(ui, selectedCmd) == SlotState::Empty) {
+    selectedCmd = 0;
+    for (int i = 0; i < n; ++i) {
       if (watchCell(ui, i) != SlotState::Empty) {
         selectedCmd = i;
         break;
@@ -261,42 +282,44 @@ inline void render(M5Canvas& c, const State& ui) {
   const float say = std::max(ui.leftPressed ? 1.0f : 0.0f, decay(now, ui.leftAtMs, 380));
   const float send = std::max(ui.rightPressed ? 1.0f : 0.0f, decay(now, ui.rightAtMs, 260));
   const float pop = decay(now, ui.selectAtMs, 320);
-  const SlotState faceState = watchCell(ui, selectedCmd);
+  const SlotState faceState = n > 0 ? watchCell(ui, selectedCmd) : SlotState::Empty;
 
   drawBatteryRing(c, ui);
 
-  constexpr int kPadR = 38;
+  const int padR = n >= 9 ? 32 : 38;
   constexpr int kPadOrbit = 168;
-  for (int cmd = 0; cmd < 4; ++cmd) {
+  const float step = n > 0 ? 360.0f / static_cast<float>(n) : 90.0f;
+  for (int cmd = 0; cmd < n; ++cmd) {
     const SlotState st = watchCell(ui, cmd);
     if (st == SlotState::Empty) continue;
     const bool on = cmd == selectedCmd;
-    const float mid = cmd * 90.0f - 90.0f;
+    const float mid = static_cast<float>(cmd) * step - 90.0f;
     const float rad = mid * kPi / 180.0f;
     const int lx = kCx + static_cast<int>(kPadOrbit * cosf(rad));
     const int ly = kCy + static_cast<int>(kPadOrbit * sinf(rad));
 
-    c.fillCircle(lx, ly, kPadR, padFill(st, breath, blink));
+    c.fillCircle(lx, ly, padR, padFill(st, breath, blink));
     if (on) {
-      c.drawCircle(lx, ly, kPadR + 3, rgb(255, 255, 255));
-      c.drawCircle(lx, ly, kPadR + 4, rgb(255, 255, 255));
+      c.drawCircle(lx, ly, padR + 3, rgb(255, 255, 255));
+      c.drawCircle(lx, ly, padR + 4, rgb(255, 255, 255));
       if (pop > 0) {
-        c.drawCircle(lx, ly, kPadR + 6 + static_cast<int>(14 * (1.0f - pop)),
+        c.drawCircle(lx, ly, padR + 6 + static_cast<int>(14 * (1.0f - pop)),
                      mix(0x0000, rgb(255, 255, 255), pop));
       }
     } else {
-      c.drawCircle(lx, ly, kPadR, rgb(20, 20, 22));
+      c.drawCircle(lx, ly, padR, rgb(20, 20, 22));
     }
 
     c.setTextDatum(middle_center);
-    c.setFont(&fonts::FreeSansBold24pt7b);
+    c.setFont(n >= 9 ? &fonts::FreeSansBold18pt7b : &fonts::FreeSansBold24pt7b);
     uint16_t ink = rgb(210, 210, 214);
     if (st == SlotState::Running) ink = mix(rgb(180, 200, 255), rgb(255, 255, 255), 0.40f + 0.50f * breath);
     else if (st == SlotState::Complete) ink = rgb(220, 255, 230);
     else if (st == SlotState::NeedsYou || st == SlotState::Error) ink = rgb(255, 255, 255);
     else if (st == SlotState::Idle) ink = rgb(152, 152, 157);
     c.setTextColor(ink);
-    char mark[2] = {static_cast<char>('1' + cmd), 0};
+    char mark[4];
+    snprintf(mark, sizeof(mark), "%d", cmd + 1);
     c.drawString(mark, lx, ly + 2);
   }
 
