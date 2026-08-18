@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>local.oscar.grok-command-watch</string>
+  <key>CFBundleName</key>
+  <string>Grok Command Watch</string>
+  <key>CFBundleExecutable</key>
+  <string>command-watch-companion</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>LSUIElement</key>
+  <false/>
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>Grok Command Watch 需要蓝牙连接 C152。</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>按住手表左键时用本机麦克风做语音输入。</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>把语音转成文字后送进选中的 Grok 分屏。</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>切换 Ghostty 标签和分屏。</string>
+</dict>
+</plist>

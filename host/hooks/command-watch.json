@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {"hooks": [{"type": "command", "command": "python3 HOME/.grok/command-watch/roster.py", "timeout": 5}]}
+    ],
+    "PreToolUse": [
+      {"matcher": ".*", "hooks": [{"type": "command", "command": "python3 HOME/.grok/command-watch/roster.py", "timeout": 5}]}
+    ],
+    "PostToolUse": [
+      {"matcher": ".*", "hooks": [{"type": "command", "command": "python3 HOME/.grok/command-watch/roster.py", "timeout": 5}]}
+    ],
+    "SubagentStart": [
+      {"hooks": [{"type": "command", "command": "python3 HOME/.grok/command-watch/roster.py", "timeout": 5}]}
+    ],
+    "SubagentStop": [
+      {"hooks": [{"type": "command", "command": "python3 HOME/.grok/command-watch/roster.py", "timeout": 5}]}
+    ],
+    "UserPromptSubmit": [
+      {"hooks": [{"type": "command", "command": "python3 HOME/.grok/command-watch/roster.py", "timeout": 5}]}
+    ],
+    "Stop": [
+      {"hooks": [{"type": "command", "command": "python3 HOME/.grok/command-watch/roster.py", "timeout": 5}]}
+    ],
+    "StopFailure": [
+      {"hooks": [{"type": "command", "command": "python3 HOME/.grok/command-watch/roster.py", "timeout": 5}]}
+    ],
+    "StopCancelled": [
+      {"hooks": [{"type": "command", "command": "python3 HOME/.grok/command-watch/roster.py", "timeout": 5}]}
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|idle_prompt|task_complete",
+        "hooks": [{"type": "command", "command": "python3 HOME/.grok/command-watch/roster.py", "timeout": 5}]
+      }
+    ],
+    "SessionEnd": [
+      {"hooks": [{"type": "command", "command": "python3 HOME/.grok/command-watch/roster.py", "timeout": 5}]}
+    ]
+  }
+}
