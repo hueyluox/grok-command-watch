@@ -1,13 +1,14 @@
 # NOTICE
 
-**Grok Command Watch** is an independent product by [hueyluox](https://github.com/hueyluox).
+**Grok Command Watch** 是 [hueyluox](https://github.com/hueyluox) 的独立项目。
 
-It is **not** Codex Micro, not an official xAI/Grok accessory, and not a
-drop-in replacement for [digitsisyph/codex-micro-stopwatch](https://github.com/digitsisyph/codex-micro-stopwatch).
+不是 Codex Micro，不是 xAI / Grok 官方配件，也不是
+[digitsisyph/codex-micro-stopwatch](https://github.com/digitsisyph/codex-micro-stopwatch)
+的换皮。
 
-This tree talks to **Ghostty + Grok Build** on macOS. Board bring-up (C152
-power rail, AMOLED sleep forwarding, USB JTAG flash notes) was adapted from
-the MIT-licensed StopWatch port above, which itself adapted
-[imliubo/codex-micro-4-core2](https://github.com/imliubo/codex-micro-4-core2).
+本仓库对接 macOS 上的 **Ghostty + Grok Build**。C152 上电、AMOLED sleep 转发、USB JTAG 刷机说明改编自上述 MIT 仓库；那一份又改编自
+[imliubo/codex-micro-4-core2](https://github.com/imliubo/codex-micro-4-core2)。
 
-Keep this file and `LICENSE` with any redistribution.
+再分发时请带着本文件和 `LICENSE`。
+
+English: [NOTICE.en.md](NOTICE.en.md)

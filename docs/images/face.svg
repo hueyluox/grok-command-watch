@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 466 466" width="466" height="466" role="img" aria-label="Grok Command Watch 表盘：1 运行 2 完成 3 要你 4 空">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="70%">
+      <stop offset="0%" stop-color="#14161c"/>
+      <stop offset="100%" stop-color="#050506"/>
+    </radialGradient>
+    <linearGradient id="dusk" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a3a58"/>
+      <stop offset="35%" stop-color="#4a8f9a"/>
+      <stop offset="68%" stop-color="#d2c2a8"/>
+      <stop offset="100%" stop-color="#2a3a58"/>
+    </linearGradient>
+  </defs>
+  <circle cx="233" cy="233" r="233" fill="#000"/>
+  <circle cx="233" cy="233" r="226" fill="url(#bg)"/>
+  <circle cx="233" cy="233" r="224" fill="none" stroke="url(#dusk)" stroke-width="10"/>
+  <!-- 1 running -->
+  <circle cx="233" cy="65" r="38" fill="#466ed0"/>
+  <circle cx="233" cy="65" r="42" fill="none" stroke="#fff" stroke-width="2.5"/>
+  <text x="233" y="76" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="700" font-size="32" fill="#e8f0ff">1</text>
+  <!-- 2 complete -->
+  <circle cx="401" cy="233" r="38" fill="#24c458"/>
+  <text x="401" y="244" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="700" font-size="32" fill="#dcffe6">2</text>
+  <!-- 3 needs you -->
+  <circle cx="233" cy="401" r="38" fill="#ff9f0a"/>
+  <text x="233" y="412" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="700" font-size="32" fill="#fff">3</text>
+  <!-- 4 hidden / empty: no pad -->
+  <text x="233" y="228" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="700" font-size="22" fill="#8eb0ff" letter-spacing="2">RUN</text>
+  <text x="233" y="256" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" fill="#9aa0a8">g1 · waiting</text>
+</svg>

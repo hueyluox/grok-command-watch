@@ -1,10 +1,15 @@
-# Contributing
+# 贡献
 
-This repo is **Grok Command Watch** (Ghostty + Grok on C152), maintained by
-[hueyluox](https://github.com/hueyluox).
+这是 **Grok Command Watch**（C152 上的 Ghostty + Grok），维护者 [hueyluox](https://github.com/hueyluox)。
 
-Please do **not** send Codex Micro / ChatGPT Desktop features here. Those belong
-in [digitsisyph/codex-micro-stopwatch](https://github.com/digitsisyph/codex-micro-stopwatch).
+**不要**往这里塞 Codex Micro / ChatGPT Desktop 功能。那些去
+[digitsisyph/codex-micro-stopwatch](https://github.com/digitsisyph/codex-micro-stopwatch)。
 
-Useful PRs: C152 bring-up, roster state machine, companion BLE, Ghostty focus,
-docs. Run `python3 host/sim_states.py` before a roster change.
+欢迎的 PR：C152 板级、roster 状态机、companion BLE、Ghostty 切窗、中文文档。  
+改 `roster.py` 先跑：
+
+```bash
+python3 host/sim_states.py
+```
+
+English: [CONTRIBUTING.en.md](CONTRIBUTING.en.md)
