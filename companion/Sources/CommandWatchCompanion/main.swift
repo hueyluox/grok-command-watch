@@ -491,7 +491,7 @@ private final class WatchVoiceSink {
 }
 
 private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
-    private var manager: CBCentralManager!
+    private var manager: CBCentralManager?
     private var peripheral: CBPeripheral?
     private var snapshotChar: CBCharacteristic?
     private var eventChar: CBCharacteristic?
@@ -527,11 +527,24 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
         self.demo = demo
         self.verbose = verbose
         super.init()
+        usb.onLine = { [weak self] line in self?.handleUsbLine(line) }
+        Self.log("companion start ax=\(AXIsProcessTrusted()) ble deferred until undocked")
+    }
+
+    private func ensureBleManager() {
+        if manager != nil { return }
+        switch CBManager.authorization {
+        case .denied, .restricted:
+            bleWanted = false
+            Self.log("bluetooth denied, stay on USB")
+            return
+        default:
+            break
+        }
         manager = CBCentralManager(delegate: self, queue: nil, options: [
             CBCentralManagerOptionShowPowerAlertKey: false,
         ])
-        usb.onLine = { [weak self] line in self?.handleUsbLine(line) }
-        Self.log("central manager created ax=\(AXIsProcessTrusted())")
+        Self.log("central manager created")
     }
 
     static func log(_ line: String) {
@@ -566,8 +579,12 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
         }
         usb.tick()
         if lastUsbOpen && !usb.isOpen {
-            Self.log("usb unplugged, force BLE snap")
+            Self.log("usb unplugged, start BLE and force snap")
+            ensureBleManager()
             pushSnapshot(force: true)
+        }
+        if !usb.isOpen {
+            ensureBleManager()
         }
         lastUsbOpen = usb.isOpen
         if now - lastRosterTick >= 1 {
@@ -642,7 +659,7 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
         guard bleWanted else { return }
         connectDeadline = Date().timeIntervalSince1970 + 8
         lastConnectAttempt = Date().timeIntervalSince1970
-        central.connect(peripheral)
+        manager?.connect(peripheral)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
@@ -656,7 +673,7 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
             Self.log("stale GATT cache, backoff then rescan")
             expected = nil
             lastConnectAttempt = Date().timeIntervalSince1970 + 8
-            manager.cancelPeripheralConnection(peripheral)
+            manager?.cancelPeripheralConnection(peripheral)
             return
         }
         peripheral.discoverCharacteristics(nil, for: service)
@@ -696,7 +713,7 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
     }
 
     private func hunt(reason: String) {
-        guard bleWanted else { return }
+        guard bleWanted, let manager else { return }
         guard manager.state == .poweredOn else { return }
         Self.log("hunt \(reason) expected=\(expected?.uuidString ?? "-") fail=\(failCount)")
         if let live = firstLiveWatch() {
@@ -715,6 +732,7 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
     }
 
     private func firstLiveWatch() -> CBPeripheral? {
+        guard let manager else { return nil }
         let gatt = manager.retrieveConnectedPeripherals(withServices: [serviceUUID])
         let hid = manager.retrieveConnectedPeripherals(withServices: [hidUUID])
         let battery = manager.retrieveConnectedPeripherals(withServices: [CBUUID(string: "180F")])
@@ -727,6 +745,7 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
 
     private func startScan() {
         let now = Date().timeIntervalSince1970
+        guard let manager else { return }
         if manager.isScanning, now - lastScanAt < 8 { return }
         lastScanAt = now
         manager.scanForPeripherals(withServices: nil, options: [
@@ -744,7 +763,7 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
         if eventChar == nil, now - lastConnectAttempt > 12 {
             bleWanted = true
         }
-        guard bleWanted else { return }
+        guard bleWanted, let manager else { return }
         let ready = eventChar != nil
         if ready { return }
         if let peripheral {
@@ -772,7 +791,7 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
     }
 
     private func use(_ peripheral: CBPeripheral, why: String) {
-        manager.stopScan()
+        manager?.stopScan()
         self.peripheral = peripheral
         peripheral.delegate = self
         Self.log("use \(why) id=\(peripheral.identifier) name=\(peripheral.name ?? "-") state=\(Self.stateName(peripheral.state))")
@@ -786,7 +805,7 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
         if now - lastConnectAttempt < 2.5 { return }
         lastConnectAttempt = now
         connectDeadline = now + 8
-        manager.connect(peripheral)
+        manager?.connect(peripheral)
     }
 
     private static func stateName(_ state: CBPeripheralState) -> String {
