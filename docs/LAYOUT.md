@@ -21,8 +21,9 @@ companion/Sources/…/main.swift   Mac companion
 companion/wrap.sh            编好装进 ~/.grok/…/Grok Command Watch.app
 host/roster.py               状态机（权威）
 host/keys_daemon.py          点表切窗 / 回车 / 闪电说
-host/launch.sh               g1–g4 启动绑定
+host/launch.sh               可选包装，现在只 exec grok
 host/sim_states.py           状态模拟
+host/roster.py               状态；panes.json 是活窗口清单
 host/install.sh              拷到运行时
 host/hooks/                  Grok hooks 模板
 host/launchd/                LaunchAgent 模板
@@ -38,7 +39,7 @@ Grok Command Watch.app/      companion
 bin/g1 g2 g3 g4              启动器
 bin/keys_daemon.py
 roster.py                    companion 每 2.5s --refresh
-roster.json / slots.json     活状态
+roster.json / slots.json / panes.json
 device.json                  已配对的表 UUID
 *.log                        日志
 .venv-pio/                   本机 pio
@@ -48,7 +49,7 @@ device.json                  已配对的表 UUID
 
 | 进程 | launchd |
 |------|---------|
-| command-watch-companion --watch | `local.grok-command-watch` |
-| keys_daemon.py（只能一个） | `local.grok-command-watch-keys` |
+| command-watch-companion --watch | **本机** `local.oscar.grok-watch`（仓模板是 `local.grok-command-watch`） |
+| keys_daemon.py（只能一个） | **本机** `local.oscar.grok-keys` |
 
-刷固件前先 `launchctl bootout gui/$(id -u)/local.grok-command-watch`，刷完再 bootstrap，否则占着 USB JTAG 口。已装过的机器可能仍是 `local.oscar.grok-watch` / `local.oscar.grok-keys`。
+刷固件前先 bootout **本机那个 Label**，刷完再 bootstrap，否则占着 USB JTAG。别把两套 Label 同时拉起来。
