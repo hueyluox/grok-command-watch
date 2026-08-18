@@ -234,7 +234,7 @@ inline void drawBatteryRing(M5Canvas& c, const State& ui) {
     if (i < lit) {
       ringSeg(c, kR0, kR1, d0, d1, igColor((i + 0.5f) / static_cast<float>(kSeg), 0.2f));
     } else {
-      ringSeg(c, kR0, kR1, d0, d1, rgb(28, 28, 30));
+      ringSeg(c, kR0, kR1, d0, d1, rgb(58, 58, 62));
     }
   }
   if (lit > 0) {

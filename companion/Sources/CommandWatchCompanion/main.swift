@@ -501,6 +501,9 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
     private let demo: Bool
     private let verbose: Bool
     private var lastPayload = Data()
+    private var lastBlePayload = Data()
+    private var lastBleSnap: TimeInterval = 0
+    private var lastUsbOpen = false
     private var selectedSlot = 0
     private var lastSnapStates: [Int] = []
     private var ttyByPid: [Int: String] = [:]
@@ -561,11 +564,16 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
                 selectedSlot = mac
             }
         }
+        usb.tick()
+        if lastUsbOpen && !usb.isOpen {
+            Self.log("usb unplugged, force BLE snap")
+            pushSnapshot(force: true)
+        }
+        lastUsbOpen = usb.isOpen
         if now - lastRosterTick >= 1 {
             lastRosterTick = now
             pushSnapshot()
         }
-        usb.tick()
         recoverIfNeeded(now: now)
     }
 
@@ -876,16 +884,21 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
 
     private func pushSnapshot(force: Bool = false) {
         let payload = buildSnapshot()
-        if !force && payload == lastPayload { return }
-        lastPayload = payload
-        if let json = String(data: payload, encoding: .utf8) {
-            usb.writeLine("SNAP \(json)")
+        let usbOpen = usb.isOpen
+        if usbOpen, force || payload != lastPayload {
+            if let json = String(data: payload, encoding: .utf8) {
+                usb.writeLine("SNAP \(json)")
+            }
         }
-        // Docked USB already carries SNAP. Extra BLE writes with-response
-        // time out the link every few seconds and the face goes blank.
-        if usb.isOpen { return }
-        guard let peripheral, let snapshotChar else { return }
+        lastPayload = payload
+        // Unplugging USB-JTAG reboots the S3. Last USB snap is not on the
+        // watch anymore — push BLE on undock, on reconnect, and every 4s.
+        let now = Date().timeIntervalSince1970
+        let bleDue = !usbOpen && (force || payload != lastBlePayload || now - lastBleSnap >= 4)
+        guard bleDue, let peripheral, let snapshotChar else { return }
         peripheral.writeValue(payload, for: snapshotChar, type: .withoutResponse)
+        lastBlePayload = payload
+        lastBleSnap = now
     }
 
     private func buildSnapshot() -> Data {
