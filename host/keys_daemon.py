@@ -39,6 +39,7 @@ from Quartz import (
 )
 
 SLOTS_PATH = Path.home() / ".grok" / "command-watch" / "slots.json"
+PANES_PATH = Path.home() / ".grok" / "command-watch" / "panes.json"
 
 SOCK = os.path.expanduser("~/.grok/command-watch/keys.sock")
 LOG = os.path.expanduser("~/.grok/command-watch/keys.log")
@@ -153,43 +154,109 @@ def pid_alive(pid) -> bool:
         return False
 
 
-# Watch 1–4 = g1–g4 sitting in two Ghostty tabs:
-#   1 g1 → ⌘1 上    2 g2 → ⌘1 下
-#   3 g3 → ⌘2 上    4 g4 → ⌘2 下
-WATCH_MAP = {
-    1: ("1L", 1, "up"),
-    2: ("1R", 1, "down"),
-    3: ("2L", 2, "up"),
-    4: ("2R", 2, "down"),
-}
+TAB_KEYS = {1: 18, 2: 19, 3: 20, 4: 21, 5: 23, 6: 22, 7: 26, 8: 28, 9: 25}
 
 
-def bind_for(n: int):
-    spec = WATCH_MAP.get(n)
-    if not spec:
-        return None
-    name, tab, pane = spec
+def tty_sort_key(tty: str) -> tuple:
+    import re
+    text = (tty or "").replace("/dev/", "")
+    match = re.search(r"(\d+)$", text)
+    return (0, int(match.group(1))) if match else (1, text)
+
+
+def is_grok_command(command: str) -> bool:
+    text = (command or "").strip()
+    if not text:
+        return False
+    low = text.lower()
+    if "command-watch" in low or "grok bot" in low or "grok-command" in low:
+        return False
+    first = text.split()[0]
+    return os.path.basename(first) == "grok"
+
+
+def list_grok_procs() -> list[dict]:
+    import subprocess
     try:
-        data = json.loads(SLOTS_PATH.read_text())
+        out = subprocess.check_output(["ps", "-ax", "-o", "pid=,tty=,command="], text=True)
+    except OSError:
+        return []
+    found = []
+    for line in out.splitlines():
+        parts = line.split(None, 2)
+        if len(parts) < 3:
+            continue
+        try:
+            pid = int(parts[0])
+        except ValueError:
+            continue
+        if not is_grok_command(parts[2]):
+            continue
+        found.append({"pid": pid, "tty": parts[1].replace("/dev/", "")})
+    found.sort(key=lambda item: (tty_sort_key(item["tty"]), item["pid"]))
+    return found
+
+
+def load_panes() -> dict:
+    try:
+        return json.loads(PANES_PATH.read_text())
     except (OSError, json.JSONDecodeError):
-        return name, {}, tab, pane
-    ent = (data.get("slots") or {}).get(name) or {}
-    return name, ent, tab, pane
+        return {"page": 0, "panes": []}
+
+
+def write_panes(page: int | None = None) -> dict:
+    groks = list_grok_procs()
+    _, surfaces = all_surfaces()
+    n_tabs = len(surfaces)
+    n = len(groks)
+    panes = []
+    for index, grok in enumerate(groks):
+        tab = None
+        pane = None
+        if n_tabs and n == n_tabs:
+            tab = index + 1
+        elif n_tabs and n == 2 * n_tabs:
+            tab = index // 2 + 1
+            pane = "up" if index % 2 == 0 else "down"
+        else:
+            tab = index // 2 + 1
+            pane = "up" if index % 2 == 0 else "down"
+        panes.append({
+            "index": index,
+            "pid": grok["pid"],
+            "tty": grok["tty"],
+            "tab": tab,
+            "pane": pane,
+        })
+    old = load_panes()
+    if page is None:
+        page = int(old.get("page") or 0)
+    max_page = max(0, (len(panes) - 1) // 4)
+    page = max(0, min(int(page), max_page))
+    data = {"updated_at": time.time(), "page": page, "panes": panes}
+    prev = {"page": old.get("page"), "panes": old.get("panes")}
+    now = {"page": data["page"], "panes": data["panes"]}
+    if prev != now:
+        try:
+            PANES_PATH.parent.mkdir(parents=True, exist_ok=True)
+            PANES_PATH.write_text(json.dumps(data, indent=2) + "\n")
+            log(f"panes n={len(panes)} page={page} pids={[p['pid'] for p in panes]}")
+        except OSError as exc:
+            log(f"panes write {exc}")
+    return data
 
 
 def stamp_title(name: str, tty: str | None) -> None:
-    if not tty or not os.path.exists(tty):
+    if not tty:
+        return
+    path = tty if tty.startswith("/") else f"/dev/{tty}"
+    if not os.path.exists(path):
         return
     try:
-        with open(tty, "w") as fh:
+        with open(path, "w") as fh:
             fh.write(f"\033]0;Grok-{name}\007")
     except OSError:
         pass
-
-
-def ax_titles(el) -> str:
-    _, title = AXUIElementCopyAttributeValue(el, "AXTitle", None)
-    return str(title or "")
 
 
 def focus_input(window, pane: str = "down") -> None:
@@ -209,29 +276,49 @@ def front_window():
     return windows[0] if windows else None
 
 
-def focus_g(n: int) -> bool:
-    app = ghostty_app()
+def focus_pane(index: int) -> bool:
+    data = write_panes()
+    panes = data.get("panes") or []
+    if index < 0 or index >= len(panes):
+        log(f"focus {index} out of range have={len(panes)}")
+        return False
+    pane = panes[index]
+    app, surfaces = all_surfaces()
     if app is None:
         return False
-    spec = bind_for(n)
-    if not spec:
-        return False
-    name, ent, tab_n, pane = spec
-    if ent.get("tty"):
-        stamp_title(name, ent.get("tty"))
+    if pane.get("tty"):
+        stamp_title(str(index + 1), pane.get("tty"))
     app.activateWithOptions_(1 << 1)
     time.sleep(0.06)
     release_mods()
-    tap({1: 18, 2: 19}.get(tab_n, 18), kCGEventFlagMaskCommand)
-    time.sleep(0.18)
+    tab_i = int(pane.get("tab") or 1) - 1
+    if 0 <= tab_i < len(surfaces):
+        window, tab = surfaces[tab_i]
+        AXUIElementPerformAction(window, "AXRaise")
+        if tab is not None:
+            AXUIElementPerformAction(tab, "AXPress")
+            time.sleep(0.12)
+    elif pane.get("tab") in TAB_KEYS:
+        tap(TAB_KEYS[int(pane["tab"])], kCGEventFlagMaskCommand)
+        time.sleep(0.15)
+    side = pane.get("pane")
+    if side in ("up", "down"):
+        release_mods()
+        tap(126 if side == "up" else 125, kCGEventFlagMaskCommand | kCGEventFlagMaskAlternate)
+        time.sleep(0.08)
     release_mods()
-    split_key = 126 if pane == "up" else 125
-    tap(split_key, kCGEventFlagMaskCommand | kCGEventFlagMaskAlternate)
-    time.sleep(0.08)
-    release_mods()
-    focus_input(front_window(), pane)
-    log(f"focus watch{n} g{n} -> ghostty cmd{tab_n} {pane}")
+    focus_input(front_window(), side or "up")
+    log(f"focus pane={index} pid={pane.get('pid')} tab={pane.get('tab')} {side}")
     return True
+
+
+def bump_page(delta: int) -> None:
+    data = write_panes()
+    n = len(data.get("panes") or [])
+    max_page = max(0, (n - 1) // 4)
+    page = max(0, min(int(data.get("page") or 0) + int(delta), max_page))
+    write_panes(page=page)
+    log(f"page -> {page} / {max_page} n={n}")
 
 
 def press_tab(n: int) -> bool:
@@ -264,8 +351,12 @@ def handle(line: str) -> None:
         return
     cmd = parts[0]
     if cmd == "focus":
-        n = int(parts[1]) if len(parts) > 1 else 1
-        focus_g(n)
+        n = int(parts[1]) if len(parts) > 1 else 0
+        focus_pane(n)
+        return
+    if cmd == "page":
+        delta = int(parts[1]) if len(parts) > 1 else 1
+        bump_page(delta)
         return
     if cmd == "shandianshuo":
         release_mods()
@@ -337,11 +428,25 @@ def infer_watch_slot() -> int | None:
             pane = "up" if fy < mid else "down"
         except Exception:
             pane = "up"
-    if tab_n == 1:
-        return 0 if pane == "up" else 2
-    if tab_n == 2:
-        return 4 if pane == "up" else 6
-    return None
+    data = write_panes()
+    panes = data.get("panes") or []
+    hit = None
+    for item in panes:
+        if int(item.get("tab") or 0) != tab_n:
+            continue
+        side = item.get("pane")
+        if side in (None, "", pane):
+            hit = item
+            if side == pane:
+                break
+    if hit is None:
+        return None
+    idx = int(hit["index"])
+    page = idx // 4
+    if page != int(data.get("page") or 0):
+        write_panes(page=page)
+    local = idx - page * 4
+    return local * 2
 
 
 def poll_mac_focus() -> None:
@@ -349,6 +454,7 @@ def poll_mac_focus() -> None:
     while True:
         time.sleep(1.0)
         try:
+            write_panes()
             slot = infer_watch_slot()
         except Exception as exc:
             log(f"focus-poll {exc}")

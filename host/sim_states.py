@@ -39,6 +39,7 @@ def load_roster_mod(tmp: Path):
     mod.HOME = tmp
     mod.ROSTER_PATH = tmp / "roster.json"
     mod.SLOTS_PATH = tmp / "slots.json"
+    mod.PANES_PATH = tmp / "panes.json"
     mod.SESSION_DIR = tmp / "sessions"
     mod.SESSION_DIR.mkdir()
     return mod
@@ -460,6 +461,29 @@ def run() -> int:
         slot = r["slots"][name]
         old_states.append(slot.get("state") or "empty")
     s.check("旧映射会错(对照)", old_states, ["running", "empty", "complete", "empty"])
+
+    r = empty_roster(mod)
+    slot = mod.ensure_pid_slot(r, 4242, "s-auto")
+    s.check("直接grok按pid建格", slot["name"] if slot else None, "p4242")
+    s.check("新格默认idle", slot["state"] if slot else None, "idle")
+    write_json(mod.PANES_PATH, {"page": 0, "panes": [{"pid": 4242, "index": 0}]})
+    refresh(mod, r)
+    s.check("panes同步还在", "p4242" in r["slots"], True)
+    write_json(mod.PANES_PATH, {"page": 1, "panes": [
+        {"pid": 11, "index": 0},
+        {"pid": 22, "index": 1},
+        {"pid": 33, "index": 2},
+        {"pid": 44, "index": 3},
+        {"pid": 55, "index": 4},
+    ]})
+    for pid in (11, 22, 33, 44, 55):
+        mod.ensure_pid_slot(r, pid)
+    refresh(mod, r)
+    s.check("五扇都建了", all(f"p{p}" in r["slots"] or any(x.get("pid")==p for x in r["slots"].values()) for p in (11, 22, 33, 44, 55)), True)
+    write_json(mod.PANES_PATH, {"page": 0, "panes": []})
+    # 4242 不在 panes 且进程不存在 → 清掉
+    refresh(mod, r)
+    s.check("关掉的pid清掉", "p4242" in r["slots"], False)
 
     print(f"tmp={tmp}")
     for row in s.rows:

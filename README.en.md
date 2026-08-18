@@ -10,14 +10,14 @@ Hardware: M5Stack StopWatch **C152**.
   <img src="docs/images/face.svg" width="280" alt="Face: 1 2 3 4 around the dial, outer ring is battery">
 </p>
 
-The four numbers stay put:
+The four numbers stay put. Just type `grok` in Ghostty — the watch lines them up. More than four: swipe to the next page.
 
-| Pad | Place | Window |
-|-----|-------|--------|
-| **1** | top | `g1`  ⌘1 top |
-| **2** | right | `g2`  ⌘1 bottom |
-| **3** | bottom | `g3`  ⌘2 top |
-| **4** | left | `g4`  ⌘2 bottom |
+| Pad | Place |
+|-----|-------|
+| **1** | top |
+| **2** | right |
+| **3** | bottom |
+| **4** | left |
 
 Blue = running, green = done, gray = idle, amber = needs you, red = failed.  
 The outer ring is battery; how far it goes is how much is left. The percentage sits at the top.
@@ -79,7 +79,7 @@ No watch? `python3 host/sim_states.py` should print `32 passed`.
 
 ## Daily
 
-Two Ghostty tabs, each split, `g1`–`g4`.
+Type `grok` in as many Ghostty panes as you want. `g1`–`g4` now just start `grok`.
 
 After edits: reflash; `companion/wrap.sh`; `host/install.sh` to copy host scripts. Source and runtime are two trees. [docs/LAYOUT.md](docs/LAYOUT.md)
 

@@ -190,9 +190,31 @@ private enum Keys {
     }
 
     static func tab(_ slot: Int) {
-        let command = slot / 2 + 1
-        _ = send("focus \(command)")
-        Companion.log("focus tab=\(command)")
+        let page = loadPanesFile().page
+        let index = page * 4 + slot / 2
+        _ = send("focus \(index)")
+        Companion.log("focus pane=\(index) page=\(page)")
+    }
+
+    static func page(_ delta: Int) {
+        _ = send("page \(delta)")
+        Companion.log("page delta=\(delta)")
+    }
+
+    static func loadPanesFile() -> (page: Int, pids: [Int], total: Int) {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".grok/command-watch/panes.json")
+        guard let data = try? Data(contentsOf: url),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return (0, [], 0)
+        }
+        let page = (obj["page"] as? NSNumber)?.intValue ?? (obj["page"] as? Int) ?? 0
+        let raw = obj["panes"] as? [[String: Any]] ?? []
+        let pids = raw.compactMap { item -> Int? in
+            if let n = item["pid"] as? Int { return n }
+            return (item["pid"] as? NSNumber)?.intValue
+        }
+        return (max(0, page), pids, pids.count)
     }
 
     static func shandianshuo() {
@@ -784,6 +806,11 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
             lastWatchTap = now
             Keys.tab(slot)
             pushSnapshot(force: true)
+        case "page":
+            Keys.page(n == 0 ? 1 : n)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                self?.pushSnapshot(force: true)
+            }
         case "voice_start":
             selectedSlot = slot
             lastWatchTap = now
@@ -860,6 +887,7 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
         let roster = loadRoster()
         let binds = loadBinds()
         let cells = watchCellNames(roster, binds)
+        let panes = Keys.loadPanesFile()
         var states: [Int] = []
         var titles: [String] = []
         for index in 0..<8 {
@@ -867,14 +895,19 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
                 let name = cells[index]
                 let state = SlotState(name: slotStateName(roster, binds, name))
                 states.append(state.rawValue)
-                titles.append(String(slotTitle(roster, name).prefix(24)))
+                var title = slotTitle(roster, name)
+                if panes.total > 4, name != "_" {
+                    let shown = panes.page * 4 + index + 1
+                    title = "\(shown)/\(panes.total) \(title)"
+                }
+                titles.append(String(title.prefix(24)))
             } else {
                 states.append(SlotState.empty.rawValue)
             }
         }
         if states != lastSnapStates {
             lastSnapStates = states
-            Self.log("snap \(cells) s=\(states.prefix(4))")
+            Self.log("snap \(cells) s=\(states.prefix(4)) page=\(panes.page) n=\(panes.total)")
         }
         let body: [String: Any] = [
             "v": 1,
@@ -931,20 +964,27 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
         pid > 1 && kill(Int32(pid), 0) == 0
     }
 
-    /// Pad 1–4 = live grok panes in tty order (the four Ghostty windows).
-    /// g4 is launched as 2R, so a hard 1L/2L/3L/4L list hides window 4.
+    /// Pad 1–4 = current page of auto-detected grok processes.
     private func watchCellNames(_ roster: [String: Any], _ binds: [String: Any]) -> [String] {
-        refreshTtys(roster, binds)
-        var live: [(name: String, tty: String)] = []
-        for name in slotOrder {
-            let pid = livePid(roster, binds, name)
-            guard pid > 0 else { continue }
-            live.append((name, ttyByPid[pid] ?? "zz-\(name)"))
+        let file = Keys.loadPanesFile()
+        let slice = Array(file.pids.dropFirst(file.page * 4).prefix(4))
+        var cells: [String] = []
+        for pid in slice {
+            cells.append(slotName(forPid: pid, roster: roster, binds: binds))
         }
-        live.sort { $0.tty == $1.tty ? $0.name < $1.name : $0.tty < $1.tty }
-        var cells = live.prefix(4).map(\.name)
         while cells.count < 4 { cells.append("_") }
         return cells
+    }
+
+    private func slotName(forPid pid: Int, roster: [String: Any], binds: [String: Any]) -> String {
+        for (name, raw) in slotMap(roster) {
+            let slot = raw as? [String: Any]
+            let rosterPid = slot?["pid"] as? Int
+                ?? (slot?["pid"] as? NSNumber)?.intValue
+                ?? 0
+            if rosterPid == pid { return name }
+        }
+        return "p\(pid)"
     }
 
     private func refreshTtys(_ roster: [String: Any], _ binds: [String: Any]) {
@@ -991,6 +1031,9 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
             ?? ((binds[name] as? [String: Any])?["pid"] as? NSNumber)?.intValue
             ?? 0
         if pidAlive(bindPid) { return bindPid }
+        if name.hasPrefix("p"), let pid = Int(name.dropFirst()), pidAlive(pid) {
+            return pid
+        }
         return 0
     }
 

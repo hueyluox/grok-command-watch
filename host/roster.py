@@ -13,6 +13,7 @@ from pathlib import Path
 HOME = Path.home() / ".grok" / "command-watch"
 SLOTS_PATH = HOME / "slots.json"
 ROSTER_PATH = HOME / "roster.json"
+PANES_PATH = HOME / "panes.json"
 SESSION_DIR = Path.home() / ".grok" / "sessions"
 
 SLOT_ORDER = ("1L", "1R", "2L", "2R", "3L", "3R", "4L", "4R")
@@ -155,6 +156,7 @@ def session_in_flight(session_id: str | None, prompt_id: str | None = None) -> b
 
 
 def refresh_workflows(roster: dict) -> None:
+    sync_from_panes(roster)
     for slot in roster["slots"].values():
         sid = slot.get("session_id")
         label = workflow_label(sid)
@@ -210,6 +212,17 @@ def empty_slot(name: str) -> dict:
     }
 
 
+def pid_alive(pid) -> bool:
+    try:
+        pid = int(pid)
+        if pid <= 1:
+            return False
+        os.kill(pid, 0)
+        return True
+    except (TypeError, ValueError, OSError, ProcessLookupError):
+        return False
+
+
 def load_roster() -> dict:
     data = load_json(ROSTER_PATH, {})
     slots = data.get("slots") or {}
@@ -218,7 +231,64 @@ def load_roster() -> dict:
         slot = slots.get(name) or empty_slot(name)
         slot["name"] = name
         out["slots"][name] = slot
+    for name, slot in slots.items():
+        if name in SLOT_ORDER:
+            continue
+        if not str(name).startswith("p"):
+            continue
+        item = dict(slot)
+        item["name"] = name
+        out["slots"][name] = item
     return out
+
+
+def ensure_pid_slot(roster: dict, pid: int | None, session_id: str | None = None) -> dict | None:
+    if not pid or int(pid) <= 1:
+        return None
+    pid = int(pid)
+    found = find_slot(roster, session_id=session_id) or find_slot(roster, pid=pid)
+    if found:
+        found["pid"] = pid
+        if session_id:
+            found["session_id"] = session_id
+        return found
+    name = f"p{pid}"
+    slot = roster["slots"].get(name) or empty_slot(name)
+    slot["name"] = name
+    slot["pid"] = pid
+    if session_id:
+        slot["session_id"] = session_id
+    if slot.get("state") in (None, "empty"):
+        slot["state"] = "idle"
+    roster["slots"][name] = slot
+    return slot
+
+
+def sync_from_panes(roster: dict) -> None:
+    panes = (load_json(PANES_PATH, {}) or {}).get("panes") or []
+    live: set[int] = set()
+    for pane in panes:
+        pid = pane.get("pid")
+        if not pid:
+            continue
+        try:
+            pid = int(pid)
+        except (TypeError, ValueError):
+            continue
+        live.add(pid)
+        slot = ensure_pid_slot(roster, pid)
+        if slot and slot.get("state") == "empty":
+            slot["state"] = "idle"
+    for name in list(roster["slots"]):
+        if not str(name).startswith("p"):
+            continue
+        slot = roster["slots"][name]
+        pid = slot.get("pid")
+        if pid and int(pid) in live:
+            continue
+        if pid_alive(pid):
+            continue
+        del roster["slots"][name]
 
 
 def find_slot(roster: dict, *, pid=None, session_id=None) -> dict | None:
@@ -251,7 +321,7 @@ def resolve_slot(roster: dict, pid: int, session_id: str | None) -> dict | None:
         if slot:
             return slot
         cur = ppid_of(cur)
-    return bind_from_slots_file(roster, pid, session_id)
+    return ensure_pid_slot(roster, pid, session_id) or bind_from_slots_file(roster, pid, session_id)
 
 
 def background_live(event: dict) -> list:
@@ -302,7 +372,11 @@ def apply_event(event: dict) -> None:
 
     slot = resolve_slot(roster, grok_pid, session_id)
     if name in ("session_start", "SessionStart") and not sub:
-        slot = bind_from_slots_file(roster, grok_pid, session_id) or slot
+        slot = (
+            bind_from_slots_file(roster, grok_pid, session_id)
+            or slot
+            or ensure_pid_slot(roster, grok_pid, session_id)
+        )
         if slot:
             slot["pid"] = grok_pid
             slot["session_id"] = session_id
@@ -313,6 +387,8 @@ def apply_event(event: dict) -> None:
         save_json(ROSTER_PATH, roster)
         return
 
+    if slot is None:
+        slot = ensure_pid_slot(roster, grok_pid, session_id)
     if slot is None:
         return
 

@@ -493,9 +493,9 @@ void updateTouchGesture(int x, int y) {
   if (direction == touch_gesture::Direction::None) return;
   activeSwipe = direction;
   if (direction == touch_gesture::Direction::Left) {
-    setSlot(static_cast<int8_t>((selectedSlot / 2 + 3) % 4 * 2), true);
+    emit("page", selectedSlot, -1);
   } else if (direction == touch_gesture::Direction::Right) {
-    setSlot(static_cast<int8_t>((selectedSlot / 2 + 1) % 4 * 2), true);
+    emit("page", selectedSlot, 1);
   }
 }
 
