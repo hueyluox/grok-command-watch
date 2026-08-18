@@ -12,18 +12,20 @@
   <img src="docs/images/face-5.svg" width="220" alt="5 个 grok：从 12 点均分，2 3 4 都挪了">
 </p>
 
-Ghostty 里直接打 `grok`，几个窗口就几个球。1 永远在正上，其余按圈均分——5 个时 2、3、4 不再钉在右/下/左。同大小最多 8 个，10 个还能点，再多才翻页。
+Ghostty 里直接打 `grok`，几个窗口就几个球。1 在正上，其余均分；5 个时 2、3、4 会挪位。点按只打到球上。最多 10 个，再多才左右滑翻页。
 
-颜色：蓝 = 在跑，绿 = 做完了，紫 = `/loop` 定时在挂着，灰 = 开着闲着，黄 = 要你点一下，红 = 挂了。  
-外圈是电量，剩多少圈走多远，顶上有百分比。
+颜色：蓝 = 在跑，绿 = 做完了，紫 = `/loop` 挂着，灰 = 开着闲着，黄 = 要你点一下，红 = 挂了。  
+外圈是电量。
 
-左黄键语音（表上的麦还没验收），右蓝键回车。屏幕不自动灭。
+插着 USB 只走线，不弹蓝牙授权。拔下来才会用蓝牙，几秒内把画面补回来（拔 USB 表会复位）。
+
+左黄键语音（表麦还没验收），右蓝键回车。屏幕不自动灭。
 
 ## 你要有这些
 
 - 这块表：C152，别的 M5 板子别刷
-- 一台带蓝牙的 Mac（14 及以上）
-- 能传数据的 USB-C（第一次刷机用，平时可以只靠蓝牙）
+- 一台 Mac（14 及以上）。插着充电座可以不给蓝牙权限
+- 能传数据的 USB-C（第一次刷机必须；拔下来走路才靠蓝牙）
 - PlatformIO、Xcode 命令行工具、Ghostty、本机 `grok`
 
 刷机口认 Espressif 的 **USB JTAG**。Anker 那个 `SN…` 口不要用。
@@ -66,7 +68,7 @@ pio run -e m5stack-stopwatch --target upload --upload-port /dev/cu.usbmodemXXXX
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.grok-command-watch.plist
 ```
 
-系统设置：给 **Grok Command Watch** 开蓝牙，给 keys 那个 Python 开辅助功能。蓝牙里找 **GrokWatch**。
+系统设置：给 keys 那个 Python 开辅助功能。插着 USB 不必开蓝牙；取下来走路时再给 **Grok Command Watch** 蓝牙，设备名 **GrokWatch**。
 
 没表也能先跑状态测试：
 
@@ -74,7 +76,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.grok-command-watch
 python3 host/sim_states.py
 ```
 
-过了会打印 `37 passed`。
+过了会打印 `42 passed`。
 
 ## 平时
 
@@ -94,6 +96,7 @@ https://docs.m5stack.com/zh_CN/guide/restore_factory/stopwatch
 - [docs/LAYOUT.md](docs/LAYOUT.md) — 目录怎么分
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) — 表和电脑怎么通信
 - [docs/C152-开源项目.md](docs/C152-开源项目.md) — 同板别的开源
+- [docs/PROGRESS.md](docs/PROGRESS.md) — 当前做到哪
 
 ## 许可
 

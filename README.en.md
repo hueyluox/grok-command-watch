@@ -12,10 +12,12 @@ Hardware: M5Stack StopWatch **C152**.
   <img src="docs/images/face-5.svg" width="220" alt="5 grok panes equally spaced; 2 3 4 have moved">
 </p>
 
-Type `grok` in Ghostty. One ball per pane, equally spaced from 12 o'clock. With five, pads 2/3/4 leave the 3/6/9 spots. Same size through 8, slightly smaller at 9–10, paging only after 10.
+Type `grok` in Ghostty. One ball per live pane, equally spaced from 12 o'clock. With five, 2/3/4 move. Tap the ball, not the gaps. Paging only after 10.
 
-Blue = running, green = done, purple = `/loop` waiting on a schedule, gray = idle, amber = needs you, red = failed.  
-The outer ring is battery; how far it goes is how much is left. The percentage sits at the top.
+Blue = running, green = done, purple = `/loop`, gray = idle, amber = needs you, red = failed.  
+The outer ring is battery.
+
+USB-docked: serial only, no Bluetooth permission prompt. Unplug resets the chip; BLE redraws the face within a few seconds.
 
 Left yellow = voice (watch mic not signed off). Right blue = Enter. Screen stays on.
 
@@ -24,8 +26,8 @@ Chinese is the default page.
 ## You need
 
 - This watch: **C152**. Do not flash other M5 boards.
-- A Mac with Bluetooth, macOS 14+
-- A data USB-C cable for the first flash (BLE is enough after that)
+- A Mac, macOS 14+. Bluetooth permission is only needed off the dock
+- A data USB-C cable for the first flash; BLE after you unplug
 - PlatformIO, Xcode CLT, Ghostty, local `grok`
 
 Flash port = Espressif **USB JTAG**. Skip the Anker `SN…` port.
@@ -68,9 +70,9 @@ pio run -e m5stack-stopwatch --target upload --upload-port /dev/cu.usbmodemXXXX
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.grok-command-watch.plist
 ```
 
-Bluetooth for **Grok Command Watch**, Accessibility for the keys Python. Pair **GrokWatch**.
+Accessibility for the keys Python. Bluetooth for **Grok Command Watch** only when you take the watch off the dock. Pair **GrokWatch**.
 
-No watch? `python3 host/sim_states.py` should print `32 passed`.
+No watch? `python3 host/sim_states.py` should print `42 passed`.
 
 ## Daily
 
@@ -90,6 +92,7 @@ USB-C in, hold reset ~2s to green, M5Burner the factory bin.
 - [docs/LAYOUT.md](docs/LAYOUT.md) — folders
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) — BLE
 - [docs/C152-开源项目.md](docs/C152-开源项目.md) — other C152 firmware (Chinese)
+- [docs/PROGRESS.md](docs/PROGRESS.md) — where it stands (Chinese)
 
 ## License
 
