@@ -61,7 +61,7 @@ def upd(kind: str, prompt: str | None = None, **extra) -> dict:
     update = {"sessionUpdate": kind, **extra}
     if prompt:
         update["prompt_id"] = prompt
-    return {"params": {"update": update}}
+    return {"timestamp": 1.0, "params": {"update": update}}
 
 
 def hook(event: str, prompt: str | None = None) -> dict:
@@ -199,6 +199,7 @@ def run() -> int:
     refresh(mod, r)
     s.check("完成后刷新仍绿", r["slots"]["1L"]["state"], "complete")
     r["slots"]["1L"]["prompt_id"] = "p2"
+    r["slots"]["1L"]["prompt_at"] = 100.0
     r["slots"]["1L"]["state"] = "running"
     refresh(mod, r)
     s.check("等回复(新prompt旧completed)", r["slots"]["1L"]["state"], "running")
