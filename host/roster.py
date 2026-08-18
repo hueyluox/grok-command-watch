@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -169,6 +170,12 @@ def refresh_workflows(roster: dict) -> None:
         # Permission / error stay until the next prompt or an explicit hook.
         if slot.get("state") in ("needs_you", "error"):
             continue
+        if session_has_loop(sid):
+            slot["state"] = "loop"
+            title = short_title(sid)
+            if title:
+                slot["title"] = title
+            continue
         if session_in_flight(sid, slot.get("prompt_id")):
             if slot.get("state") in ("empty", "idle", "complete"):
                 slot["state"] = "running"
@@ -182,6 +189,37 @@ def refresh_workflows(roster: dict) -> None:
             title = short_title(sid)
             if title:
                 slot["title"] = title
+
+
+def session_has_loop(session_id: str | None) -> bool:
+    """True when this session has an active /loop (scheduler) sitting on it."""
+    root = session_dir(session_id)
+    if root is None:
+        return False
+    summary = root / "summary.json"
+    if summary.exists():
+        try:
+            data = json.loads(summary.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data = {}
+        blob = " ".join(
+            str(data.get(key) or "")
+            for key in ("last_turn_summary", "generated_title")
+        )
+        if re.search(r"(?i)(\bloop\b|/loop|loop tick)", blob):
+            return True
+    sub_root = root / "subagents"
+    if sub_root.is_dir():
+        for meta in sub_root.glob("*/meta.json"):
+            try:
+                data = json.loads(meta.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            desc = str(data.get("description") or "")
+            prompt = str(data.get("prompt") or "")
+            if desc.lower().startswith("loop:") or "Scheduled task" in prompt:
+                return True
+    return False
 
 
 def short_title(session_id: str | None) -> str:

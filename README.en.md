@@ -14,7 +14,7 @@ Hardware: M5Stack StopWatch **C152**.
 
 Type `grok` in Ghostty. One ball per pane, equally spaced from 12 o'clock. With five, pads 2/3/4 leave the 3/6/9 spots. Same size through 8, slightly smaller at 9–10, paging only after 10.
 
-Blue = running, green = done, gray = idle, amber = needs you, red = failed.  
+Blue = running, green = done, purple = `/loop` waiting on a schedule, gray = idle, amber = needs you, red = failed.  
 The outer ring is battery; how far it goes is how much is left. The percentage sits at the top.
 
 Left yellow = voice (watch mic not signed off). Right blue = Enter. Screen stays on.

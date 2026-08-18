@@ -21,7 +21,7 @@ constexpr int kInnerR = 108;
 constexpr int kMaxPads = 10;
 constexpr float kPi = 3.14159265f;
 
-enum class SlotState : uint8_t { Empty, Idle, Running, NeedsYou, Complete, Error };
+enum class SlotState : uint8_t { Empty, Idle, Running, NeedsYou, Complete, Error, Loop };
 
 struct State {
   std::array<SlotState, kMaxPads> slots{};
@@ -88,6 +88,8 @@ inline uint16_t colorFor(SlotState s) {
       return rgb(52, 220, 96);
     case SlotState::Error:
       return rgb(255, 69, 58);
+    case SlotState::Loop:
+      return rgb(168, 110, 255);
     default:
       return rgb(44, 44, 46);
   }
@@ -136,6 +138,8 @@ inline const char* stateWord(SlotState s) {
       return "ERR";
     case SlotState::Idle:
       return "IDLE";
+    case SlotState::Loop:
+      return "LOOP";
     default:
       return "";
   }
@@ -256,6 +260,8 @@ inline uint16_t padFill(SlotState st, float breath, float blink) {
       return rgb(255, 69, 58);
     case SlotState::Complete:
       return rgb(36, 196, 88);
+    case SlotState::Loop:
+      return mix(rgb(70, 30, 110), rgb(180, 90, 255), 0.40f + 0.50f * breath);
     case SlotState::Idle:
       return rgb(52, 52, 56);
     default:
@@ -315,6 +321,7 @@ inline void render(M5Canvas& c, const State& ui) {
     uint16_t ink = rgb(210, 210, 214);
     if (st == SlotState::Running) ink = mix(rgb(180, 200, 255), rgb(255, 255, 255), 0.40f + 0.50f * breath);
     else if (st == SlotState::Complete) ink = rgb(220, 255, 230);
+    else if (st == SlotState::Loop) ink = rgb(236, 220, 255);
     else if (st == SlotState::NeedsYou || st == SlotState::Error) ink = rgb(255, 255, 255);
     else if (st == SlotState::Idle) ink = rgb(152, 152, 157);
     c.setTextColor(ink);

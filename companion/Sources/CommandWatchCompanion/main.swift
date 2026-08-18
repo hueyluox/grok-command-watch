@@ -20,7 +20,7 @@ private let deviceURL = stateDir.appendingPathComponent("device.json")
 private let slotOrder = ["1L", "1R", "2L", "2R", "3L", "3R", "4L", "4R"]
 
 private enum SlotState: Int {
-    case empty = 0, idle = 1, running = 2, needsYou = 3, complete = 4, error = 5
+    case empty = 0, idle = 1, running = 2, needsYou = 3, complete = 4, error = 5, loop = 6
 
     init(name: String) {
         switch name {
@@ -29,6 +29,7 @@ private enum SlotState: Int {
         case "needs_you": self = .needsYou
         case "complete": self = .complete
         case "error": self = .error
+        case "loop": self = .loop
         default: self = .empty
         }
     }

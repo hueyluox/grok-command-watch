@@ -160,7 +160,7 @@ class Server : public BLEServerCallbacks, public BLECharacteristicCallbacks {
     for (int i = 0; i < watch_ui::kMaxPads; ++i) {
       const int raw = states.isNull() ? 0 : states[i] | 0;
       next.ui.slots[static_cast<size_t>(i)] =
-          static_cast<watch_ui::SlotState>(constrain(raw, 0, 5));
+          static_cast<watch_ui::SlotState>(constrain(raw, 0, 6));
       if (!states.isNull() && i < static_cast<int>(states.size())) parsed = i + 1;
     }
     next.ui.count = static_cast<int8_t>(doc["n"] | parsed);

@@ -485,6 +485,13 @@ def run() -> int:
     refresh(mod, r)
     s.check("关掉的pid清掉", "p4242" in r["slots"], False)
 
+    r = empty_roster(mod)
+    seed_session(mod, "s-loop", title="Loop tick OK: skipped (outside window)")
+    bind(mod, r, "2L", "s-loop", 22)
+    r["slots"]["2L"].update(state="complete", prompt_id="px")
+    refresh(mod, r)
+    s.check("loop单独成色", r["slots"]["2L"]["state"], "loop")
+
     print(f"tmp={tmp}")
     for row in s.rows:
         print(row)
