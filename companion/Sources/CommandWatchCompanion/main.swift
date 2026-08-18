@@ -504,6 +504,8 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
     private var lastBlePayload = Data()
     private var lastBleSnap: TimeInterval = 0
     private var lastUsbOpen = false
+    private var startedAt = Date().timeIntervalSince1970
+    private var usbSeen = false
     private var selectedSlot = 0
     private var lastSnapStates: [Int] = []
     private var ttyByPid: [Int: String] = [:]
@@ -578,12 +580,15 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
             }
         }
         usb.tick()
+        if usb.isOpen { usbSeen = true }
+        // Only start BLE after a real undock, or if we booted with no USB
+        // for a few seconds. Do not start BLE in the first ticks while
+        // the serial port is still coming up — that re-pops the TCC alert.
         if lastUsbOpen && !usb.isOpen {
             Self.log("usb unplugged, start BLE and force snap")
             ensureBleManager()
             pushSnapshot(force: true)
-        }
-        if !usb.isOpen {
+        } else if !usb.isOpen && !usbSeen && now - startedAt > 5 {
             ensureBleManager()
         }
         lastUsbOpen = usb.isOpen
