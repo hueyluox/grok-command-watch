@@ -239,7 +239,9 @@ def write_panes(page: int | None = None) -> dict:
     if prev != now:
         try:
             PANES_PATH.parent.mkdir(parents=True, exist_ok=True)
-            PANES_PATH.write_text(json.dumps(data, indent=2) + "\n")
+            tmp = PANES_PATH.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(data, indent=2) + "\n")
+            tmp.replace(PANES_PATH)
             log(f"panes n={len(panes)} page={page} pids={[p['pid'] for p in panes]}")
         except OSError as exc:
             log(f"panes write {exc}")

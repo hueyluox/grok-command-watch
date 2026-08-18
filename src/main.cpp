@@ -397,9 +397,6 @@ void updatePowerTelemetry(bool force = false) {
 
 watch_ui::State currentUi() {
   watch_ui::State ui = host.ui;
-  if (!host.available) {
-    ui = watch_ui::State{};
-  }
   ui.selected = selectedSlot;
   ui.battery = batteryPercent;
   ui.charging = charging;

@@ -201,12 +201,14 @@ private enum Keys {
         Companion.log("page delta=\(delta)")
     }
 
+    private static var lastGoodPanes: (page: Int, pids: [Int], total: Int) = (0, [], 0)
+
     static func loadPanesFile() -> (page: Int, pids: [Int], total: Int) {
         let url = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".grok/command-watch/panes.json")
         guard let data = try? Data(contentsOf: url),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return (0, [], 0)
+            return lastGoodPanes
         }
         let page = (obj["page"] as? NSNumber)?.intValue ?? (obj["page"] as? Int) ?? 0
         let raw = obj["panes"] as? [[String: Any]] ?? []
@@ -214,7 +216,8 @@ private enum Keys {
             if let n = item["pid"] as? Int { return n }
             return (item["pid"] as? NSNumber)?.intValue
         }
-        return (max(0, page), pids, pids.count)
+        lastGoodPanes = (max(0, page), pids, pids.count)
+        return lastGoodPanes
     }
 
     static func shandianshuo() {
@@ -877,10 +880,11 @@ private final class Companion: NSObject, CBCentralManagerDelegate, CBPeripheralD
         if let json = String(data: payload, encoding: .utf8) {
             usb.writeLine("SNAP \(json)")
         }
+        // Docked USB already carries SNAP. Extra BLE writes with-response
+        // time out the link every few seconds and the face goes blank.
+        if usb.isOpen { return }
         guard let peripheral, let snapshotChar else { return }
-        let type: CBCharacteristicWriteType =
-            snapshotChar.properties.contains(.write) ? .withResponse : .withoutResponse
-        peripheral.writeValue(payload, for: snapshotChar, type: type)
+        peripheral.writeValue(payload, for: snapshotChar, type: .withoutResponse)
     }
 
     private func buildSnapshot() -> Data {

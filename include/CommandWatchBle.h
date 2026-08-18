@@ -144,13 +144,18 @@ class Server : public BLEServerCallbacks, public BLECharacteristicCallbacks {
       Serial.println("snapshot parse fail");
       return;
     }
+    JsonArray states = doc["s"].as<JsonArray>();
+    int incoming = doc["n"] | (states.isNull() ? 0 : static_cast<int>(states.size()));
+    if (incoming <= 0 && snapshotState_.available && snapshotState_.ui.count > 0) {
+      Serial.println("snapshot ignore empty");
+      return;
+    }
     Snapshot next;
     next.available = true;
     next.receivedAtMs = millis();
     next.ui.selected = doc["sel"] | 0;
     next.ui.focused = doc["fg"] | -1;
     next.ui.link = doc["link"] | 2;
-    JsonArray states = doc["s"].as<JsonArray>();
     int parsed = 0;
     for (int i = 0; i < watch_ui::kMaxPads; ++i) {
       const int raw = states.isNull() ? 0 : states[i] | 0;
