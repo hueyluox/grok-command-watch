@@ -7,17 +7,12 @@
 硬件是 M5Stack StopWatch **C152**。
 
 <p align="center">
-  <img src="docs/images/face.svg" width="280" alt="表盘：12/3/6/9 点是 1 2 3 4，外圈是电量">
+  <img src="docs/images/face.svg" width="220" alt="4 个 grok：1 2 3 4 在上下左右">
+  &nbsp;
+  <img src="docs/images/face-5.svg" width="220" alt="5 个 grok：从 12 点均分，2 3 4 都挪了">
 </p>
 
-几个 grok 就几个球，从 12 点均分；5 个时 2/3/4 会挪位。同大小最多 8 个很松，10 个还能点，再多才翻页。
-
-| 点 | 位置 |
-|----|------|
-| **1** | 上 |
-| **2** | 右 |
-| **3** | 下 |
-| **4** | 左 |
+Ghostty 里直接打 `grok`，几个窗口就几个球。1 永远在正上，其余按圈均分——5 个时 2、3、4 不再钉在右/下/左。同大小最多 8 个，10 个还能点，再多才翻页。
 
 颜色：蓝 = 在跑，绿 = 做完了，灰 = 开着闲着，黄 = 要你点一下，红 = 挂了。  
 外圈是电量，剩多少圈走多远，顶上有百分比。
@@ -79,7 +74,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.grok-command-watch
 python3 host/sim_states.py
 ```
 
-过了会打印 `32 passed`。
+过了会打印 `37 passed`。
 
 ## 平时
 

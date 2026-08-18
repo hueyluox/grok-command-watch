@@ -7,17 +7,12 @@ A wrist dashboard for the Grok panes in Ghostty. Tap a number to jump to that pa
 Hardware: M5Stack StopWatch **C152**.
 
 <p align="center">
-  <img src="docs/images/face.svg" width="280" alt="Face: 1 2 3 4 around the dial, outer ring is battery">
+  <img src="docs/images/face.svg" width="220" alt="4 grok panes at 12/3/6/9">
+  &nbsp;
+  <img src="docs/images/face-5.svg" width="220" alt="5 grok panes equally spaced; 2 3 4 have moved">
 </p>
 
-The four numbers stay put. Just type `grok` in Ghostty — the watch lines them up. More than four: swipe to the next page.
-
-| Pad | Place |
-|-----|-------|
-| **1** | top |
-| **2** | right |
-| **3** | bottom |
-| **4** | left |
+Type `grok` in Ghostty. One ball per pane, equally spaced from 12 o'clock. With five, pads 2/3/4 leave the 3/6/9 spots. Same size through 8, slightly smaller at 9–10, paging only after 10.
 
 Blue = running, green = done, gray = idle, amber = needs you, red = failed.  
 The outer ring is battery; how far it goes is how much is left. The percentage sits at the top.
