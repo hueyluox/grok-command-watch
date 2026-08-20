@@ -210,12 +210,16 @@ def list_grok_procs() -> list[dict]:
             pid = int(parts[0])
         except ValueError:
             continue
-        if etime_seconds(parts[1]) < 2:
+        age = etime_seconds(parts[1])
+        if age < 2:
             continue
         if not is_grok_command(parts[3]):
             continue
-        found.append({"pid": pid, "tty": parts[2].replace("/dev/", "")})
-    found.sort(key=lambda item: (tty_sort_key(item["tty"]), item["pid"]))
+        found.append({
+            "pid": pid,
+            "tty": parts[2].replace("/dev/", ""),
+            "age": age,
+        })
     return found
 
 
@@ -226,30 +230,157 @@ def load_panes() -> dict:
         return {"page": 0, "panes": []}
 
 
+def focused_tab_pane():
+    app = ghostty_app()
+    if app is None:
+        return 1, "up"
+    el = AXUIElementCreateApplication(int(app.processIdentifier()))
+    _, windows = AXUIElementCopyAttributeValue(el, "AXWindows", None)
+    if not windows:
+        return 1, "up"
+    win = windows[0]
+    tab_n = 1
+    _, kids = AXUIElementCopyAttributeValue(win, "AXChildren", None)
+    for child in kids or []:
+        _, role = AXUIElementCopyAttributeValue(child, "AXRole", None)
+        if role != "AXTabGroup":
+            continue
+        _, tabs = AXUIElementCopyAttributeValue(child, "AXTabs", None)
+        radio = list(tabs or [])
+        if not radio:
+            _, gkids = AXUIElementCopyAttributeValue(child, "AXChildren", None)
+            for g in gkids or []:
+                _, r = AXUIElementCopyAttributeValue(g, "AXRole", None)
+                if r == "AXRadioButton":
+                    radio.append(g)
+        for i, tab in enumerate(radio):
+            _, val = AXUIElementCopyAttributeValue(tab, "AXValue", None)
+            if val:
+                tab_n = i + 1
+                break
+    pane = "up"
+    _, focused = AXUIElementCopyAttributeValue(el, "AXFocusedUIElement", None)
+    if focused is not None:
+        _, pos = AXUIElementCopyAttributeValue(focused, "AXPosition", None)
+        _, wpos = AXUIElementCopyAttributeValue(win, "AXPosition", None)
+        _, wsize = AXUIElementCopyAttributeValue(win, "AXSize", None)
+        try:
+            fy = float(pos.y)
+            mid = float(wpos.y) + float(wsize.height) * 0.45
+            pane = "up" if fy < mid else "down"
+        except Exception:
+            pane = "up"
+    return tab_n, pane
+
+
 def write_panes(page: int | None = None) -> dict:
     groks = list_grok_procs()
+    by_pid = {g["pid"]: g for g in groks}
+    old = load_panes()
+    old_list = list(old.get("panes") or [])
     _, surfaces = all_surfaces()
     n_tabs = len(surfaces)
-    n = len(groks)
-    panes = []
-    for index, grok in enumerate(groks):
-        tab = None
-        pane = None
-        if n_tabs and n == n_tabs:
-            tab = index + 1
-        elif n_tabs and n == 2 * n_tabs:
-            tab = index // 2 + 1
-            pane = "up" if index % 2 == 0 else "down"
-        elif n_tabs:
-            tab = min(index + 1, n_tabs)
-        else:
-            tab = index + 1
-        panes.append({
-            "index": index,
-            "pid": grok["pid"],
-            "tty": grok["tty"],
+    focus_tab, focus_pane = focused_tab_pane()
+
+    ordered = []
+    used = set()
+    new_groks = [g for g in groks if g["pid"] not in {int(p.get("pid") or 0) for p in old_list}]
+    new_groks.sort(key=lambda g: (-int(g.get("age") or 0), g["pid"]))
+
+    def take_new_for(tab, pane):
+        if (tab, pane) != (focus_tab, focus_pane) or not new_groks:
+            return None
+        return new_groks.pop(0)
+
+    for prev in old_list:
+        try:
+            pid = int(prev.get("pid") or 0)
+        except (TypeError, ValueError):
+            pid = 0
+        tab = prev.get("tab")
+        pane = prev.get("pane")
+        if pid in by_pid:
+            g = by_pid[pid]
+            used.add(pid)
+            ordered.append({
+                "pid": pid,
+                "tty": g["tty"],
+                "tab": tab,
+                "pane": pane,
+                "age": g.get("age"),
+            })
+            continue
+        # hole: a new grok in the same split takes this seat
+        g = take_new_for(tab, pane)
+        if g is None:
+            continue
+        used.add(g["pid"])
+        ordered.append({
+            "pid": g["pid"],
+            "tty": g["tty"],
             "tab": tab,
             "pane": pane,
+            "age": g.get("age"),
+        })
+
+    leftover = [g for g in groks if g["pid"] not in used]
+    leftover.sort(key=lambda g: (-int(g.get("age") or 0), g["pid"]))
+    occupied = {(p.get("tab"), p.get("pane")) for p in ordered}
+    for g in leftover:
+        tab, pane = focus_tab, focus_pane
+        if (tab, pane) in occupied:
+            other = "down" if pane == "up" else "up"
+            if (tab, other) not in occupied:
+                pane = other
+            elif n_tabs:
+                placed = False
+                for t in range(1, n_tabs + 1):
+                    for side in ("up", "down"):
+                        if (t, side) not in occupied:
+                            tab, pane = t, side
+                            placed = True
+                            break
+                    if placed:
+                        break
+        occupied.add((tab, pane))
+        ordered.append({
+            "pid": g["pid"],
+            "tty": g["tty"],
+            "tab": tab,
+            "pane": pane,
+            "age": g.get("age"),
+        })
+
+    if not old_list:
+        leftover = list(groks)
+        leftover.sort(key=lambda g: (-int(g.get("age") or 0), g["pid"]))
+        ordered = []
+        for index, g in enumerate(leftover):
+            if n_tabs and len(leftover) == n_tabs:
+                tab, pane = index + 1, None
+            elif n_tabs and len(leftover) == 2 * n_tabs:
+                tab = index // 2 + 1
+                pane = "up" if index % 2 == 0 else "down"
+            elif n_tabs:
+                tab, pane = min(index + 1, n_tabs), None
+            else:
+                tab, pane = index + 1, None
+            ordered.append({
+                "pid": g["pid"],
+                "tty": g["tty"],
+                "tab": tab,
+                "pane": pane,
+                "age": g.get("age"),
+            })
+
+    panes = []
+    for index, item in enumerate(ordered):
+        panes.append({
+            "index": index,
+            "pid": item["pid"],
+            "tty": item["tty"],
+            "tab": item.get("tab"),
+            "pane": item.get("pane"),
         })
     old = load_panes()
     if page is None:
